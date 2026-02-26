@@ -1,7 +1,7 @@
 {
-  "name": "Ministry Of Chai",
-  "short_name": "MoC",
-  "description": "Premium QR-based tea & snacks ordering system.",
+  "name": "DineByte Restaurant Management",
+  "short_name": "DineByte",
+  "description": "Digital Dining and Order Management System",
   "start_url": "/menu",
   "display": "standalone",
   "background_color": "#ffffff",

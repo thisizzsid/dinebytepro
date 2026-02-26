@@ -3,6 +3,9 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { CartProvider } from "../lib/cart-context";
 import { AuthProvider } from "../lib/auth-context";
+import { RestaurantProvider } from "../lib/restaurant-context";
+import { TableProvider } from "../lib/table-context";
+import { AdminProvider } from "../lib/admin-context";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -15,8 +18,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Ministry Of Chai",
-  description: "Delicious chai and snacks",
+  title: "DineByte - Modern Restaurant Management",
+  description: "Next-gen POS and Digital Ordering for Restaurants",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
@@ -42,7 +45,13 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <AuthProvider>
-          <CartProvider>{children}</CartProvider>
+          <AdminProvider>
+            <RestaurantProvider>
+              <TableProvider>
+                <CartProvider>{children}</CartProvider>
+              </TableProvider>
+            </RestaurantProvider>
+          </AdminProvider>
         </AuthProvider>
       </body>
     </html>

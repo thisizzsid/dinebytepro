@@ -2,24 +2,27 @@
 
 import { useSearchParams, useRouter } from "next/navigation";
 import { useState, Suspense, useEffect } from "react";
-import { MENU_ITEMS } from "../../lib/data";
-import { useCart } from "../../lib/cart-context";
-import { useAuth } from "../../lib/auth-context";
-import { formatPrice } from "../../lib/utils";
-import { ShoppingBag, Plus, Minus, Check, Clock, Table, Trash2, Utensils, Navigation, MessageCircle, Phone, HelpCircle } from "lucide-react";
-import { db } from "../../lib/firebase";
-import { collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, doc } from "firebase/firestore";
-import { OrderType, PaymentType, MenuItem, ItemVariant } from "../../types";
+import { MENU_ITEMS } from "../../../lib/data";
+import { useCart } from "../../../lib/cart-context";
+import { useAuth } from "../../../lib/auth-context";
+import { useRestaurant } from "@/lib/restaurant-context";
+import { formatPrice } from "../../../lib/utils";
+import { ShoppingBag, Plus, Minus, Check, Clock, Table, Trash2, Utensils, Navigation, MessageCircle, Phone, HelpCircle, AlertCircle } from "lucide-react";
+import { db } from "../../../lib/firebase/config";
+import { collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, doc, where, getDocs, updateDoc } from "firebase/firestore";
+import { OrderType, PaymentType, MenuItem, ItemVariant, OrderItem } from "../../../types";
 import { motion, AnimatePresence } from "framer-motion";
 
 function MenuContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { restaurant, isLoading: isRestroLoading } = useRestaurant();
   const tableNumber = searchParams.get("table");
-  const { customer, isLoading } = useAuth();
+  const partySize = searchParams.get("party");
+  const { customer, isLoading: isAuthLoading } = useAuth();
   const { items, addToCart, removeFromCart, clearCart, totalAmount } = useCart();
   
-  const [menuItems, setMenuItems] = useState<MenuItem[]>(MENU_ITEMS);
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [upiId, setUpiId] = useState("");
   const [orderType, setOrderType] = useState<OrderType>(tableNumber ? "dinein" : "takeaway");
   const [paymentType, setPaymentType] = useState<PaymentType>("upi");
@@ -28,52 +31,60 @@ function MenuContent() {
   const [showSupport, setShowSupport] = useState(false);
   const [showFullCheckout, setShowFullCheckout] = useState(false);
   const [isMenuLoading, setIsMenuLoading] = useState(true);
+  const [activeOrders, setActiveOrders] = useState<any[]>([]);
 
   useEffect(() => {
-    if (!isLoading && !customer) {
-      console.log("No customer found, redirecting to /auth");
-      router.push("/auth");
+    if (!isAuthLoading && !customer && restaurant) {
+      console.log("No customer found, redirecting to auth");
+      router.push(`/${restaurant.slug}/auth`);
     }
-  }, [customer, isLoading, router]);
+  }, [customer, isAuthLoading, router, restaurant]);
 
   useEffect(() => {
-    console.log("Starting Menu Sync...");
-    // Sync Menu from DB
-    const q = query(collection(db, "menu"), orderBy("category"));
+    if (!restaurant || !customer) return;
+
+    // Listen for active orders of this customer
+    const ordersQ = query(
+      collection(db, "restaurants", restaurant.id, "orders"),
+      where("customerId", "==", customer.id),
+      where("orderStatus", "in", ["received", "preparing", "ready"])
+    );
+
+    const unsubOrders = onSnapshot(ordersQ, (snapshot) => {
+      const orders = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      setActiveOrders(orders);
+    });
+
+    return () => unsubOrders();
+  }, [restaurant, customer]);
+
+  useEffect(() => {
+    if (!restaurant) return;
+    
+    console.log("Starting Menu Sync for restaurant:", restaurant.id);
+    // Sync Menu from restaurant-scoped collection
+    const q = query(
+      collection(db, "restaurants", restaurant.id, "menu"), 
+      orderBy("category")
+    );
+    
     const unsubMenu = onSnapshot(q, 
       (snapshot) => {
-        const dbData = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-        console.log("Menu Snapshot received, db count:", dbData.length);
-        
-        // Merge strategy: Local items + DB items
-        // If DB has items, we append them to our local list or replace duplicates by name
-        const merged = [...MENU_ITEMS];
-        dbData.forEach((dbItem: any) => {
-          const index = merged.findIndex(i => i.name.toLowerCase() === dbItem.name.toLowerCase());
-          if (index !== -1) {
-            merged[index] = { ...merged[index], ...dbItem }; // Update existing by name
-          } else {
-            merged.push(dbItem); // Add new ones
-          }
-        });
-        
-        setMenuItems(merged);
+        const dbData = snapshot.docs.map(d => ({ id: d.id, ...d.data() })) as MenuItem[];
+        setMenuItems(dbData);
         setIsMenuLoading(false);
       },
       (error) => {
         console.error("Menu Sync Error:", error);
-        setMenuItems(MENU_ITEMS);
         setIsMenuLoading(false);
       }
     );
 
-    // Sync UPI Settings
-    const unsubSettings = onSnapshot(doc(db, "settings", "config"), (d) => {
-      if (d.exists()) setUpiId(d.data().upiId || "");
-    });
+    // UPI Settings are now part of the restaurant document
+    setUpiId(restaurant.settings?.upiId || "");
 
-    return () => { unsubMenu(); unsubSettings(); };
-  }, []);
+    return () => unsubMenu();
+  }, [restaurant]);
 
   const categories = ["All", ...Array.from(new Set(menuItems.map(i => i.category)))];
 
@@ -82,11 +93,12 @@ function MenuContent() {
     : menuItems.filter(i => i.category === activeCategory);
 
   const handlePlaceOrder = async () => {
-    if (items.length === 0 || !customer) return;
+    if (items.length === 0 || !customer || !restaurant) return;
     
     setIsOrdering(true);
     try {
       const orderData = {
+        restaurantId: restaurant.id,
         customerId: customer.id,
         customerName: customer.name,
         customerMobile: customer.mobile,
@@ -99,12 +111,34 @@ function MenuContent() {
         paymentStatus: "pending",
         orderStatus: "received",
         createdAt: serverTimestamp(),
-        queuePosition: Math.floor(Math.random() * 5) + 1,
       };
 
-      const docRef = await addDoc(collection(db, "orders"), orderData);
+      const docRef = await addDoc(collection(db, "restaurants", restaurant.id, "orders"), orderData);
+      
+      // Automatically lock table if it's a dine-in order
+      if (orderType === "dinein" && tableNumber) {
+        try {
+          const tablesQ = query(
+            collection(db, "restaurants", restaurant.id, "tables"),
+            where("tableNumber", "==", tableNumber)
+          );
+          const tableSnapshot = await getDocs(tablesQ);
+          if (!tableSnapshot.empty) {
+            const tableDoc = tableSnapshot.docs[0];
+            await updateDoc(tableDoc.ref, {
+              isAvailable: false,
+              occupiedAt: serverTimestamp(),
+              currentPartySize: parseInt(partySize || "1")
+            });
+          }
+        } catch (tableError) {
+          console.error("Error locking table:", tableError);
+        }
+      }
+
       clearCart();
-      router.push(`/track?id=${docRef.id}`);
+      setShowFullCheckout(false);
+      alert("Order placed successfully! Track it using the floating icon.");
     } catch (error) {
       console.error("Error placing order:", error);
       alert("Failed to place order. Please try again.");
@@ -113,10 +147,28 @@ function MenuContent() {
     }
   };
 
-  if (isLoading) {
+  if (isRestroLoading || isAuthLoading) {
     return (
       <div className="min-h-screen bg-orange-50 flex items-center justify-center font-black text-orange-600 animate-pulse text-2xl">
         INITIALIZING SESSION...
+      </div>
+    );
+  }
+
+  if (!restaurant) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center p-6 text-center">
+        <div className="w-24 h-24 bg-red-100 text-red-600 rounded-full flex items-center justify-center mb-6">
+          <AlertCircle size={48} />
+        </div>
+        <h1 className="text-3xl font-black text-white mb-2">Restaurant Not Found</h1>
+        <p className="text-gray-400 font-bold mb-8">The restaurant you are looking for does not exist or has been deactivated.</p>
+        <button 
+          onClick={() => router.push("/")}
+          className="bg-orange-600 text-white px-8 py-4 rounded-2xl font-black text-sm"
+        >
+          BACK TO HOME
+        </button>
       </div>
     );
   }
@@ -130,11 +182,11 @@ function MenuContent() {
         <div className="flex justify-between items-start mb-4">
           <div className="flex items-center gap-4">
             <div className="w-16 h-16 relative">
-              <img src="/moclogo.png" alt="Ministry Of Chai Logo" className="w-full h-full object-contain" />
+              <img src="/moclogo.png" alt="DineByte Logo" className="w-full h-full object-contain" />
             </div>
             <div>
-              <h1 className="text-3xl font-black text-orange-900 leading-tight">Ministry Of Chai</h1>
-              <p className="text-sm font-bold text-orange-600/60 uppercase tracking-widest">Premium Tea & Snacks</p>
+              <h1 className="text-3xl font-black text-orange-900 leading-tight">DineByte</h1>
+              <p className="text-sm font-bold text-orange-600/60 uppercase tracking-widest">Premium Restaurant Service</p>
             </div>
           </div>
           <div className="text-right">
@@ -151,6 +203,11 @@ function MenuContent() {
           ) : (
             <span className="flex items-center gap-1 bg-blue-100 text-blue-700 px-4 py-2 rounded-2xl text-xs font-black uppercase tracking-wider">
               <Clock size={14} /> Takeaway
+            </span>
+          )}
+          {partySize && (
+            <span className="flex items-center gap-1 bg-emerald-100 text-emerald-700 px-4 py-2 rounded-2xl text-xs font-black uppercase tracking-wider">
+              <Utensils size={14} /> {partySize} Diners
             </span>
           )}
           <span className="text-[10px] font-bold text-gray-300 uppercase tracking-tighter">Verified Device • Secure Ordering</span>
@@ -225,7 +282,7 @@ function MenuContent() {
                     {item.variants && item.variants.length > 0 ? (
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                         {item.variants.map((variant: ItemVariant) => {
-                          const cartItem = items.find(i => i.id === item.id && i.variantName === variant.name);
+                          const cartItem = items.find((i: OrderItem) => i.id === item.id && i.variantName === variant.name);
                           return (
                             <div key={variant.name} className="flex flex-col gap-2 p-3 bg-gray-50 rounded-2xl border border-gray-100">
                               <div className="flex justify-between items-center">
@@ -265,7 +322,7 @@ function MenuContent() {
                       </div>
                     ) : (
                       <div className="flex items-center justify-end">
-                        {items.find(i => i.id === item.id) ? (
+                        {items.find((i: OrderItem) => i.id === item.id) ? (
                           <div className="flex items-center bg-gray-900 rounded-2xl p-1 shadow-lg">
                             <button 
                               onClick={() => removeFromCart(item.id)}
@@ -275,7 +332,7 @@ function MenuContent() {
                               <Minus size={16} />
                             </button>
                             <span className="w-8 text-center font-black text-white text-sm">
-                              {items.find(i => i.id === item.id)?.quantity}
+                              {items.find((i: OrderItem) => i.id === item.id)?.quantity}
                             </span>
                             <button 
                               onClick={() => addToCart({ id: item.id, name: item.name, price: item.price, quantity: 1 })}
@@ -312,15 +369,31 @@ function MenuContent() {
         )}
       </div>
 
-      {/* Support FAB */}
-      <div className="fixed bottom-32 right-6 z-40">
+      {/* Tracking & Support FABs */}
+      <div className="fixed bottom-32 right-6 z-40 flex flex-col gap-4">
         <AnimatePresence>
+          {activeOrders.length > 0 && (
+            <motion.button
+              initial={{ opacity: 0, scale: 0.5, x: 50 }}
+              animate={{ opacity: 1, scale: 1, x: 0 }}
+              onClick={() => router.push(`/${restaurant?.slug}/track?id=${activeOrders[0].id}`)}
+              className="w-16 h-16 bg-orange-600 text-white rounded-4xl flex flex-col items-center justify-center shadow-2xl active:scale-95 transition-all relative group"
+              title="Track Active Order"
+            >
+              <Clock size={24} />
+              <span className="text-[8px] font-black uppercase mt-1">Track</span>
+              <span className="absolute -top-1 -right-1 bg-gray-900 text-white text-[10px] font-black w-6 h-6 rounded-full flex items-center justify-center border-2 border-white">
+                {activeOrders.length}
+              </span>
+            </motion.button>
+          )}
+
           {showSupport && (
             <motion.div 
               initial={{ opacity: 0, scale: 0.5, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.5, y: 20 }}
-              className="bg-white rounded-3xl shadow-2xl p-4 mb-4 border border-orange-100 w-64"
+              className="bg-white rounded-3xl shadow-2xl p-4 border border-orange-100 w-64"
             >
               <div className="space-y-2">
                 <a href="https://wa.me/1234567890" target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 p-3 hover:bg-green-50 rounded-2xl transition-colors">
@@ -348,7 +421,7 @@ function MenuContent() {
         <button 
           onClick={() => setShowSupport(!showSupport)}
           aria-label={showSupport ? "Close Support" : "Open Support"}
-          className="w-16 h-16 bg-gray-900 text-white rounded-4xl flex items-center justify-center shadow-2xl active:scale-95 transition-all"
+          className="w-16 h-16 bg-gray-900 text-white rounded-4xl flex items-center justify-center shadow-2xl active:scale-95 transition-all self-end"
         >
           {showSupport ? <Check size={28} /> : <HelpCircle size={28} />}
         </button>
@@ -371,7 +444,7 @@ function MenuContent() {
                     <div className="relative">
                       <ShoppingBag size={24} className="text-orange-500" />
                       <span className="absolute -top-2 -right-2 bg-white text-gray-900 text-[10px] font-black w-5 h-5 rounded-full flex items-center justify-center">
-                        {items.reduce((sum, i) => sum + i.quantity, 0)}
+                        {items.reduce((sum: number, i: OrderItem) => sum + i.quantity, 0)}
                       </span>
                     </div>
                     <div>
@@ -456,7 +529,7 @@ function MenuContent() {
                       <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1 text-center">Scan or Pay to UPI</p>
                       <p className="font-black text-blue-500 text-lg">{upiId}</p>
                       <a 
-                        href={`upi://pay?pa=${upiId}&pn=MinistryOfChai&am=${(totalAmount * 1.05).toFixed(2)}&cu=INR`}
+                        href={`upi://pay?pa=${upiId}&pn=DineByte&am=${(totalAmount * 1.05).toFixed(2)}&cu=INR`}
                         className="mt-3 inline-block bg-blue-600 text-white px-6 py-2 rounded-xl text-[10px] font-black"
                       >
                         OPEN UPI APP

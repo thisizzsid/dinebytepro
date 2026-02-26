@@ -1,0 +1,436 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { useRestaurant } from "@/lib/restaurant-context";
+import { getOrders } from "../../../../lib/firebase/orders";
+import { Order } from "@/types/models";
+import jsPDF from "jspdf";
+import "jspdf-autotable";
+import AdminGuard from "@/components/AdminGuard";
+import { 
+  BarChart3, 
+  Calendar, 
+  Download, 
+  Filter, 
+  ArrowLeft, 
+  LayoutDashboard, 
+  Activity, 
+  Table as TableIcon, 
+  List, 
+  FileText, 
+  Settings2, 
+  LogOut,
+  TrendingUp,
+  TrendingDown,
+  Search,
+  ChevronRight,
+  IndianRupee,
+  ShoppingBag,
+  Users,
+  Clock
+} from "lucide-react";
+import { format } from "date-fns";
+import { useRouter, useParams } from "next/navigation";
+import { formatPrice } from "@/lib/utils";
+
+export default function SalesReportPage() {
+  const router = useRouter();
+  const { slug } = useParams<{ slug: string }>();
+  const { restaurant } = useRestaurant();
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [filteredOrders, setFilteredOrders] = useState<Order[]>([]);
+  const [startDate, setStartDate] = useState(format(new Date(), 'yyyy-MM-01'));
+  const [endDate, setEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  useEffect(() => {
+    if (restaurant) {
+      getOrders(restaurant.id).then((allOrders) => {
+        setOrders(allOrders);
+        applyFilter(allOrders, startDate, endDate);
+      });
+    }
+  }, [restaurant]);
+
+  const applyFilter = (allOrders: Order[], startStr: string, endStr: string) => {
+    if (!startStr || !endStr) {
+      setFilteredOrders(allOrders);
+      return;
+    }
+    const start = new Date(startStr);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(endStr);
+    end.setHours(23, 59, 59, 999);
+    
+    const filtered = allOrders.filter((order) => {
+      const orderDate = order.createdAt.toDate();
+      return orderDate >= start && orderDate <= end;
+    });
+    setFilteredOrders(filtered);
+  };
+
+  const handleFilter = () => {
+    applyFilter(orders, startDate, endDate);
+  };
+
+  const totalSales = filteredOrders.reduce(
+    (sum, order) => sum + order.totalAmount,
+    0
+  );
+
+  const averageOrderValue = filteredOrders.length > 0 ? totalSales / filteredOrders.length : 0;
+
+  const handleDownloadPdf = () => {
+    setIsGenerating(true);
+    try {
+      const doc = new jsPDF();
+      doc.setFontSize(20);
+      doc.text(`${restaurant?.slug?.toUpperCase()} - Sales Report`, 14, 22);
+      doc.setFontSize(10);
+      doc.setTextColor(100);
+      doc.text(`Period: ${startDate} to ${endDate}`, 14, 30);
+      doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 35);
+
+      (doc as any).autoTable({
+        startY: 45,
+        head: [["Order ID", "Customer", "Items", "Type", "Status", "Total", "Date"]],
+        body: filteredOrders.map((order) => [
+          order.id?.slice(-6).toUpperCase(),
+          order.customerName,
+          order.items.length,
+          order.type.toUpperCase(),
+          order.orderStatus.toUpperCase(),
+          `Rs. ${order.totalAmount.toFixed(2)}`,
+          format(order.createdAt.toDate(), 'MMM dd, hh:mm a'),
+        ]),
+        headStyles: { fillColor: [79, 70, 229], textColor: [255, 255, 255] },
+        alternateRowStyles: { fillColor: [245, 247, 250] },
+      });
+
+      const finalY = (doc as any).lastAutoTable.finalY || 50;
+      doc.setFontSize(12);
+      doc.setTextColor(0);
+      doc.text(`Total Orders: ${filteredOrders.length}`, 14, finalY + 15);
+      doc.text(`Total Revenue: Rs. ${totalSales.toFixed(2)}`, 14, finalY + 22);
+
+      doc.save(`sales-report-${startDate}-to-${endDate}.pdf`);
+    } catch (error) { 
+      console.error("PDF Generation failed:", error);
+      alert("Failed to generate PDF. Please try again.");
+    }
+    setIsGenerating(false);
+  };
+
+  return (
+    <AdminGuard>
+      <div className="min-h-screen bg-gray-50 flex">
+        {/* Sidebar */}
+        <aside className="hidden lg:flex w-72 bg-gray-900 flex-col h-screen sticky top-0">
+          <div className="p-8">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center p-1 overflow-hidden">
+                <img src="/moclogo.png" alt="Logo" className="w-full h-full object-contain" />
+              </div>
+              <h1 className="text-xl font-black text-white leading-tight tracking-tight">DineByte</h1>
+            </div>
+            <p className="text-[10px] text-gray-500 font-black uppercase tracking-[0.2em] ml-1">Restaurant Management</p>
+          </div>
+
+          <nav className="flex-1 px-4 space-y-2 overflow-y-auto">
+            <p className="px-4 text-[10px] font-black text-gray-600 uppercase tracking-widest mb-2 mt-4">Main</p>
+            <button 
+              onClick={() => router.push(`/${slug}/admin`)}
+              className="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl font-black text-sm text-gray-400 hover:bg-white/5 hover:text-white transition-all"
+              type="button"
+              title="Dashboard"
+              aria-label="Dashboard"
+            >
+              <LayoutDashboard size={20} /> DASHBOARD
+            </button>
+            <button 
+              onClick={() => router.push(`/${slug}/admin`)}
+              className="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl font-black text-sm text-gray-400 hover:bg-white/5 hover:text-white transition-all"
+              type="button"
+              title="Live Orders"
+              aria-label="Live Orders"
+            >
+              <Activity size={20} /> LIVE ORDERS
+            </button>
+            
+            <p className="px-4 text-[10px] font-black text-gray-600 uppercase tracking-widest mb-2 mt-8">Operations</p>
+            <button 
+              onClick={() => router.push(`/${slug}/admin/tables`)}
+              className="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl font-black text-sm text-gray-400 hover:bg-white/5 hover:text-white transition-all"
+              type="button"
+              title="Table Mapping"
+              aria-label="Table Mapping"
+            >
+              <TableIcon size={20} /> TABLE MAPPING
+            </button>
+            <button 
+              onClick={() => router.push(`/${slug}/admin`)}
+              className="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl font-black text-sm text-gray-400 hover:bg-white/5 hover:text-white transition-all"
+              type="button"
+              title="Menu Catalog"
+              aria-label="Menu Catalog"
+            >
+              <List size={20} /> MENU CATALOG
+            </button>
+
+            <p className="px-4 text-[10px] font-black text-gray-600 uppercase tracking-widest mb-2 mt-8">Reports & Billing</p>
+            <button 
+              className="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl font-black text-sm bg-orange-600 text-white shadow-lg shadow-orange-600/20 transition-all"
+              type="button"
+              title="Sales Analytics"
+              aria-label="Sales Analytics"
+            >
+              <BarChart3 size={20} /> SALES ANALYTICS
+            </button>
+            <button 
+              onClick={() => router.push(`/${slug}/admin/invoices`)}
+              className="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl font-black text-sm text-gray-400 hover:bg-white/5 hover:text-white transition-all"
+              type="button"
+              title="Digital Bills"
+              aria-label="Digital Bills"
+            >
+              <FileText size={20} /> DIGITAL BILLS
+            </button>
+            <button 
+              onClick={() => router.push(`/${slug}/admin/invoice-settings`)}
+              className="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl font-black text-sm text-gray-400 hover:bg-white/5 hover:text-white transition-all"
+              type="button"
+              title="Billing Config"
+              aria-label="Billing Config"
+            >
+              <Settings2 size={20} /> BILLING CONFIG
+            </button>
+            <button 
+              onClick={() => router.push(`/${slug}/admin/analytics`)}
+              className="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl font-black text-sm text-gray-400 hover:bg-white/5 hover:text-white transition-all"
+              type="button"
+              title="Turnover Insights"
+              aria-label="Turnover Insights"
+            >
+              <Clock size={20} /> TURNOVER INSIGHTS
+            </button>
+
+            <p className="px-4 text-[10px] font-black text-gray-600 uppercase tracking-widest mb-2 mt-8">System</p>
+            <button 
+              onClick={() => router.push(`/${slug}/admin`)}
+              className="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl font-black text-sm text-gray-400 hover:bg-white/5 hover:text-white transition-all"
+              type="button"
+              title="Settings"
+              aria-label="Settings"
+            >
+              <Settings2 size={20} /> SETTINGS
+            </button>
+          </nav>
+
+          <div className="p-4 mt-auto">
+            <div className="bg-white/5 p-4 rounded-2xl border border-white/5 mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-orange-600 rounded-xl flex items-center justify-center text-white font-black">SA</div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-black text-white truncate">Super Admin</p>
+                  <p className="text-[10px] text-gray-500 font-bold truncate">Terminal 01</p>
+                </div>
+                <button 
+                  onClick={() => {
+                    sessionStorage.removeItem("moc_admin_auth");
+                    router.push(`/${slug}/admin`);
+                  }}
+                  className="p-2 text-gray-500 hover:text-red-500 transition-colors"
+                  title="Logout"
+                >
+                  <LogOut size={18} />
+                </button>
+              </div>
+            </div>
+          </div>
+        </aside>
+
+        {/* Main Content */}
+        <main className="flex-1 overflow-y-auto">
+          <div className="p-8 lg:p-12 max-w-400 mx-auto">
+            {/* Header */}
+            <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
+              <div>
+                <h2 className="text-4xl font-black text-gray-900 tracking-tight mb-2 uppercase">Sales Analytics</h2>
+                <div className="flex items-center gap-4 text-gray-400 font-bold text-sm">
+                  <span className="flex items-center gap-2"><Calendar size={16} /> {format(new Date(), 'EEEE, MMM do')}</span>
+                  <span className="w-1 h-1 bg-gray-300 rounded-full" />
+                  <span className="flex items-center gap-2 text-orange-600"><TrendingUp size={16} /> Live Financials</span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <div className="flex bg-white p-1 rounded-2xl shadow-sm border border-gray-100">
+                  <div className="flex flex-col px-4 py-2">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">From</label>
+                    <input 
+                      type="date" 
+                      value={startDate} 
+                      onChange={(e) => setStartDate(e.target.value)}
+                      className="text-xs font-black border-none bg-transparent p-0 focus:ring-0 cursor-pointer"
+                      aria-label="Start Date"
+                    />
+                  </div>
+                  <div className="w-px bg-gray-100 my-2" />
+                  <div className="flex flex-col px-4 py-2">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">To</label>
+                    <input 
+                      type="date" 
+                      value={endDate} 
+                      onChange={(e) => setEndDate(e.target.value)}
+                      className="text-xs font-black border-none bg-transparent p-0 focus:ring-0 cursor-pointer"
+                      aria-label="End Date"
+                    />
+                  </div>
+                </div>
+                <button 
+                  onClick={handleFilter}
+                  className="bg-gray-900 text-white p-4 rounded-2xl hover:bg-orange-600 transition-all shadow-lg active:scale-95"
+                  title="Apply Filter"
+                  type="button"
+                >
+                  <Filter size={20} />
+                </button>
+                <button 
+                  onClick={handleDownloadPdf}
+                  disabled={isGenerating}
+                  className="bg-orange-600 text-white px-6 py-4 rounded-2xl font-black text-xs flex items-center gap-2 shadow-lg shadow-orange-600/20 active:scale-95 transition-all disabled:opacity-50"
+                  type="button"
+                  title="Export PDF"
+                >
+                  {isGenerating ? 'GENERATING...' : <><Download size={18} /> EXPORT PDF</>}
+                </button>
+              </div>
+            </header>
+
+            {/* Stats Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6 mb-12">
+              <div className="bg-white p-8 rounded-4xl shadow-sm border border-gray-100 relative overflow-hidden group">
+                <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform">
+                  <IndianRupee size={80} />
+                </div>
+                <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest mb-2">Total Revenue</p>
+                <p className="text-3xl font-black text-gray-900">{formatPrice(totalSales)}</p>
+                <div className="mt-4 flex items-center gap-2 text-green-500 font-bold text-xs">
+                  <TrendingUp size={14} /> Gross collection
+                </div>
+              </div>
+              <div className="bg-white p-8 rounded-4xl shadow-sm border border-gray-100 relative overflow-hidden group">
+                <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform">
+                  <ShoppingBag size={80} />
+                </div>
+                <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest mb-2">Orders Processed</p>
+                <p className="text-3xl font-black text-gray-900">{filteredOrders.length}</p>
+                <div className="mt-4 flex items-center gap-2 text-blue-500 font-bold text-xs">
+                  <Activity size={14} /> Total transactions
+                </div>
+              </div>
+              <div className="bg-white p-8 rounded-4xl shadow-sm border border-gray-100 relative overflow-hidden group">
+                <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform">
+                  <Users size={80} />
+                </div>
+                <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest mb-2">Avg. Order Value</p>
+                <p className="text-3xl font-black text-gray-900">{formatPrice(averageOrderValue)}</p>
+                <div className="mt-4 flex items-center gap-2 text-orange-500 font-bold text-xs">
+                  <TrendingUp size={14} /> Per customer spend
+                </div>
+              </div>
+              <div className="bg-gray-900 p-8 rounded-4xl shadow-xl text-white relative overflow-hidden group">
+                <div className="absolute top-0 right-0 p-4 opacity-20 group-hover:scale-110 transition-transform text-white">
+                  <FileText size={80} />
+                </div>
+                <p className="text-[10px] text-white/60 font-black uppercase tracking-widest mb-2">Net Growth</p>
+                <p className="text-3xl font-black">+14.2%</p>
+                <p className="mt-4 text-[10px] text-white/40 font-bold uppercase tracking-widest">VS PREVIOUS PERIOD</p>
+              </div>
+            </div>
+
+            {/* Sales Table */}
+            <div className="bg-white rounded-4xl shadow-sm border border-gray-100 overflow-hidden">
+              <div className="p-8 border-b border-gray-50 flex items-center justify-between">
+                <h3 className="text-xl font-black text-gray-900 uppercase">Transaction History</h3>
+                <div className="relative">
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300" size={16} />
+                  <input 
+                    type="text" 
+                    placeholder="Search by customer..." 
+                    className="bg-gray-50 border-none rounded-xl py-2 pl-10 pr-4 text-xs font-bold text-gray-900 focus:ring-2 focus:ring-orange-600 min-w-50"
+                  />
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-gray-50/50">
+                      <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Order ID</th>
+                      <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Customer</th>
+                      <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Items</th>
+                      <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Type</th>
+                      <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Date</th>
+                      <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Total</th>
+                      <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {filteredOrders.length > 0 ? filteredOrders.map((order) => (
+                      <tr key={order.id} className="group hover:bg-gray-50/50 transition-colors">
+                        <td className="px-8 py-5">
+                          <span className="text-xs font-black text-gray-400 group-hover:text-gray-900 transition-colors">#{order.id?.slice(-6).toUpperCase()}</span>
+                        </td>
+                        <td className="px-8 py-5">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 bg-orange-100 text-orange-600 rounded-lg flex items-center justify-center text-[10px] font-black">
+                              {order.customerName.charAt(0)}
+                            </div>
+                            <span className="text-sm font-black text-gray-900">{order.customerName}</span>
+                          </div>
+                        </td>
+                        <td className="px-8 py-5">
+                          <span className="text-xs font-bold text-gray-500">{order.items.length} items</span>
+                        </td>
+                        <td className="px-8 py-5">
+                          <span className={`text-[10px] font-black px-2 py-1 rounded-md uppercase tracking-widest ${order.type === 'dinein' ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'}`}>
+                            {order.type}
+                          </span>
+                        </td>
+                        <td className="px-8 py-5">
+                          <div className="flex flex-col">
+                            <span className="text-xs font-black text-gray-900">{format(order.createdAt.toDate(), 'MMM dd, yyyy')}</span>
+                            <span className="text-[10px] font-bold text-gray-400">{format(order.createdAt.toDate(), 'hh:mm a')}</span>
+                          </div>
+                        </td>
+                        <td className="px-8 py-5">
+                          <span className="text-sm font-black text-gray-900">{formatPrice(order.totalAmount)}</span>
+                        </td>
+                        <td className="px-8 py-5 text-right">
+                          <button className="p-2 text-gray-300 hover:text-orange-600 transition-colors" title="View Details">
+                            <ChevronRight size={18} />
+                          </button>
+                        </td>
+                      </tr>
+                    )) : (
+                      <tr>
+                        <td colSpan={7} className="px-8 py-20 text-center">
+                          <div className="flex flex-col items-center gap-4">
+                            <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center text-gray-300">
+                              <Search size={32} />
+                            </div>
+                            <p className="text-sm font-black text-gray-400 uppercase tracking-widest">No orders found for this period</p>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    </AdminGuard>
+  );
+}

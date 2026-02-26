@@ -1,20 +1,22 @@
 "use client";
 
 import { useEffect, useState, Suspense } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
-import { db } from "../../lib/firebase";
+import { useSearchParams, useRouter, useParams } from "next/navigation";
+import { db } from "../../../lib/firebase/config";
 import { doc, onSnapshot, updateDoc, serverTimestamp } from "firebase/firestore";
-import { Order } from "../../types/models";
-import { formatPrice } from "../../lib/utils";
+import { Order } from "../../../types/models";
+import { formatPrice } from "../../../lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { BellRing, CheckCircle, Receipt, ArrowLeft, Loader2, MapPin, Smartphone, Clock, ChefHat, CheckCircle2, ShoppingBag, Volume2, VolumeX, Bell } from "lucide-react";
-import { notificationManager } from "../../lib/notification-manager";
+import { notificationManager } from "../../../lib/notification-manager";
+import { OrderItem } from "../../../types";
 
 function TrackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { slug } = useParams<{ slug: string }>();
   const orderId = searchParams.get("id");
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
@@ -37,13 +39,13 @@ function TrackContent() {
 
   useEffect(() => {
     if (!orderId) {
-      router.push("/menu");
+      if (slug) router.push(`/${slug}/menu`);
       return;
     }
 
     let previousStatus: string | null = null;
 
-    const unsubscribe = onSnapshot(doc(db, "orders", orderId), (doc) => {
+    const unsubscribe = onSnapshot(doc(db, "restaurants", slug as string, "orders", orderId), (doc) => {
       if (doc.exists()) {
         const data = doc.data() as Order;
         setOrder({ id: doc.id, ...data } as Order);
@@ -57,7 +59,7 @@ function TrackContent() {
         // Ping System: Notify when order is ready or delivered
         if ((data.orderStatus === 'ready' || data.orderStatus === 'delivered') && !hasNotified) {
           if ("Notification" in window && Notification.permission === "granted") {
-            new Notification("Ministry Of Chai", {
+            new Notification("DineByte", {
               body: `Your order #${orderId.slice(-6).toUpperCase()} is ${data.orderStatus}!`,
               icon: "/moclogo.png"
             });
@@ -92,7 +94,7 @@ function TrackContent() {
     if (!orderId || isPinging) return;
     setIsPinging(true);
     try {
-      await updateDoc(doc(db, "orders", orderId), {
+      await updateDoc(doc(db, "restaurants", slug as string, "orders", orderId), {
         lastPingAt: serverTimestamp()
       });
       alert("Admin pinged! They will be with you shortly.");
@@ -130,7 +132,7 @@ function TrackContent() {
       margin: { left: 5, right: 5 },
       styles: { fontSize: 7, cellPadding: 1 },
       head: [['Item', 'Qty', 'Price']],
-      body: order.items.map(i => [i.name, i.quantity, (i.price * i.quantity).toFixed(2)]),
+      body: order.items.map((i: OrderItem) => [i.name, i.quantity, (i.price * i.quantity).toFixed(2)]),
       theme: 'plain',
     });
 
@@ -189,7 +191,7 @@ function TrackContent() {
       {/* Header */}
       <header className="bg-white px-6 pt-12 pb-8 rounded-b-[3rem] shadow-sm mb-8">
         <button 
-          onClick={() => router.push("/menu")}
+          onClick={() => slug && router.push(`/${slug}/menu`)}
           className="flex items-center gap-2 text-gray-400 font-bold text-xs uppercase tracking-widest mb-6"
         >
           <ArrowLeft size={16} /> Back to Menu
@@ -197,11 +199,11 @@ function TrackContent() {
         <div className="flex justify-between items-end">
             <div className="flex items-center gap-4">
               <div className="w-16 h-16 relative">
-                <img src="/moclogo.png" alt="Logo" className="w-full h-full object-contain" />
+                <img src="/moclogo.png" alt="DineByte Logo" className="w-full h-full object-contain" />
               </div>
               <div>
-                <h1 className="text-3xl font-black text-gray-900 leading-tight">Track Order</h1>
-                <p className="text-sm font-bold text-orange-600">ID: #{order.id?.slice(-6).toUpperCase()}</p>
+                <h1 className="text-3xl font-black text-orange-900 leading-tight">DineByte</h1>
+                <p className="text-sm font-bold text-orange-600/60 uppercase tracking-widest">Order Tracking</p>
               </div>
             </div>
             <div className="flex gap-2">
@@ -232,17 +234,27 @@ function TrackContent() {
         <div className="bg-white rounded-[2.5rem] p-6 shadow-sm border border-orange-100">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-black text-gray-900 uppercase tracking-widest text-xs">Audio Alerts</h3>
-            <button 
-              onClick={() => {
-                const next = !notifSettings.enabled;
-                setNotifSettings(prev => ({ ...prev, enabled: next }));
-                notificationManager?.saveSettings(notifSettings.volume, next);
-              }}
-              aria-label={notifSettings.enabled ? "Disable Audio" : "Enable Audio"}
-              className={`w-12 h-6 rounded-full p-1 transition-all ${notifSettings.enabled ? 'bg-orange-600' : 'bg-gray-200'}`}
-            >
-              <div className={`w-4 h-4 bg-white rounded-full shadow-md transition-all ${notifSettings.enabled ? 'translate-x-6' : 'translate-x-0'}`} />
-            </button>
+            <div className="flex items-center gap-3">
+              <button 
+                onClick={() => notificationManager?.playStatusUpdate()}
+                className="p-2 text-orange-600 hover:bg-orange-50 rounded-xl transition-all"
+                title="Test Sound"
+                aria-label="Test Sound"
+              >
+                <Volume2 size={18} />
+              </button>
+              <button 
+                onClick={() => {
+                  const next = !notifSettings.enabled;
+                  setNotifSettings(prev => ({ ...prev, enabled: next }));
+                  notificationManager?.saveSettings(notifSettings.volume, next);
+                }}
+                aria-label={notifSettings.enabled ? "Disable Audio" : "Enable Audio"}
+                className={`w-12 h-6 rounded-full p-1 transition-all ${notifSettings.enabled ? 'bg-orange-600' : 'bg-gray-200'}`}
+              >
+                <div className={`w-4 h-4 bg-white rounded-full shadow-md transition-all ${notifSettings.enabled ? 'translate-x-6' : 'translate-x-0'}`} />
+              </button>
+            </div>
           </div>
           <div className="flex items-center gap-4">
             {notifSettings.volume === 0 ? <VolumeX className="text-gray-400" size={18} /> : <Volume2 className="text-orange-600" size={18} />}

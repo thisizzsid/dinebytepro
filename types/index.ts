@@ -1,3 +1,4 @@
+import type { Timestamp } from "firebase/firestore";
 export type OrderType = 'dinein' | 'takeaway';
 export type PaymentType = 'upi' | 'counter';
 export type PaymentStatus = 'pending' | 'paid' | 'failed';
@@ -25,11 +26,11 @@ export interface Order {
   paymentType: PaymentType;
   paymentStatus: PaymentStatus;
   orderStatus: OrderStatus;
-  createdAt: any; // Firestore Timestamp
+  createdAt: Timestamp;
   customerName: string;
   customerMobile: string;
   taxAmount?: number;
-  lastPingAt?: any; // Firestore Timestamp
+  lastPingAt?: Timestamp;
 }
 
 export interface MenuItem {

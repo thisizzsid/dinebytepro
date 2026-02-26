@@ -1,23 +1,23 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { useAuth } from "@/lib/auth-context";
+import { useRouter, useParams } from "next/navigation";
+import { useAuth } from "../../../lib/auth-context";
 import PhoneInput from "react-phone-input-2";
 import "react-phone-input-2/lib/style.css";
 import { motion } from "framer-motion";
 import { User, ShieldCheck, ArrowRight, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
-import { db } from "../../lib/firebase/config";
+import { db } from "../../../lib/firebase/config";
 import { collection, addDoc, serverTimestamp, Timestamp } from "firebase/firestore";
 
 export default function AuthPage() {
   const router = useRouter();
+  const { slug } = useParams<{ slug: string }>();
   const { customer, login, isLoading: isAuthLoading } = useAuth();
   
   const [formData, setFormData] = useState({
     name: "",
     phone: "",
-    restaurantSlug: "",
     tableNumber: "",
     partySize: 1,
   });
@@ -27,10 +27,8 @@ export default function AuthPage() {
   const [isSuccess, setIsSuccess] = useState(false);
 
   useEffect(() => {
-    if (!isAuthLoading && customer && !isSuccess && formData.restaurantSlug) {
-      router.push(`/${formData.restaurantSlug}/menu`);
-    }
-  }, [customer, isAuthLoading, router, isSuccess, formData.restaurantSlug]);
+    if (!isAuthLoading && customer && !isSuccess && slug) router.push(`/${slug}/menu`);
+  }, [customer, isAuthLoading, router, isSuccess, slug]);
 
   const validate = () => {
     const newErrors: Record<string, string> = {};
@@ -43,12 +41,10 @@ export default function AuthPage() {
       newErrors.phone = "Please enter a valid mobile number";
     }
 
-    if (formData.restaurantSlug.trim().length === 0) {
-      newErrors.restaurantSlug = "Enter restaurant slug (e.g., demo)";
-    }
     if (formData.tableNumber.trim().length === 0) {
       newErrors.tableNumber = "Enter your table number";
     }
+
     if (formData.partySize < 1) {
       newErrors.partySize = "Party size must be at least 1";
     }
@@ -91,12 +87,12 @@ export default function AuthPage() {
 
       setIsSuccess(true);
       setTimeout(() => {
-        if (formData.restaurantSlug) {
+        if (slug) {
           const query = new URLSearchParams({
             table: formData.tableNumber,
             party: String(formData.partySize),
           }).toString();
-          router.push(`/${formData.restaurantSlug}/menu?${query}`);
+          router.push(`/${slug}/menu?${query}`);
         }
       }, 1500);
     } catch (error) {
@@ -137,7 +133,7 @@ export default function AuthPage() {
     <div className="min-h-screen bg-orange-50 flex flex-col p-6 items-center justify-center overflow-y-auto">
       <div className="w-full max-w-md bg-white rounded-[2.5rem] shadow-2xl p-8 lg:p-10 border border-orange-100 relative">
         
-        <div className="text-center mb-10 group">
+        <div className="text-center mb-10">
           <div className="w-24 h-24 bg-orange-600 rounded-[2.5rem] flex items-center justify-center mx-auto mb-8 rotate-6 shadow-2xl shadow-orange-600/20 group-hover:rotate-12 transition-transform duration-500">
             <img src="/moclogo.png" alt="DineByte" className="w-12 h-12 object-contain brightness-0 invert" />
           </div>
@@ -192,31 +188,15 @@ export default function AuthPage() {
               {errors.phone && <p className="text-[10px] text-red-500 font-black uppercase tracking-tighter ml-1">{errors.phone}</p>}
             </div>
 
-            {/* Restaurant Slug */}
-            <div className="space-y-2">
-              <label htmlFor="global-restaurant-slug" className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Restaurant Slug</label>
-              <input
-                id="global-restaurant-slug"
-                type="text"
-                value={formData.restaurantSlug}
-                onChange={(e) => handleInputChange("restaurantSlug", e.target.value)}
-                placeholder="e.g., demo"
-                className={`w-full bg-gray-50 border-2 rounded-2xl py-4 px-4 text-gray-900 font-bold focus:ring-0 transition-all ${
-                  errors.restaurantSlug ? 'border-red-100 bg-red-50/30' : 'border-transparent focus:border-orange-600'
-                }`}
-              />
-              {errors.restaurantSlug && <p className="text-[10px] text-red-500 font-black uppercase tracking-tighter ml-1">{errors.restaurantSlug}</p>}
-            </div>
-
             {/* Table Number */}
             <div className="space-y-2">
-              <label htmlFor="global-table-number" className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Table Number</label>
+              <label htmlFor="auth-table-number" className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Table Number</label>
               <input
-                id="global-table-number"
                 type="text"
+                id="auth-table-number"
                 value={formData.tableNumber}
                 onChange={(e) => handleInputChange("tableNumber", e.target.value)}
-                placeholder="Enter table number"
+                placeholder="Enter table number (printed on table)"
                 className={`w-full bg-gray-50 border-2 rounded-2xl py-4 px-4 text-gray-900 font-bold focus:ring-0 transition-all ${
                   errors.tableNumber ? 'border-red-100 bg-red-50/30' : 'border-transparent focus:border-orange-600'
                 }`}
@@ -226,10 +206,10 @@ export default function AuthPage() {
 
             {/* Party Size */}
             <div className="space-y-2">
-              <label htmlFor="global-party-size" className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Number of Diners</label>
+              <label htmlFor="auth-party-size" className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Number of Diners</label>
               <input
-                id="global-party-size"
                 type="number"
+                id="auth-party-size"
                 min={1}
                 value={formData.partySize}
                 onChange={(e) => handleInputChange("partySize", parseInt(e.target.value || "1", 10))}
