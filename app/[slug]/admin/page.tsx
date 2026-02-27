@@ -52,6 +52,7 @@ import { notificationManager } from "../../../lib/notification-manager";
 import { OrderItem } from "../../../types";
 import { useRouter, useParams } from "next/navigation";
 import { useRestaurant } from "../../../lib/restaurant-context";
+import DarkToggle from "@/components/DarkToggle";
 
 export default function AdminPage() {
   const router = useRouter();
@@ -764,6 +765,27 @@ export default function AdminPage() {
                         type="button"
                       >
                         OPEN LINK
+                      </button>
+                    </div>
+                    <div className="absolute top-6 right-6 flex items-center gap-3">
+                      <DarkToggle />
+                      <button
+                        onClick={async () => {
+                          if (!slug) return;
+                          try {
+                            const res = await fetch(`/api/seed-data`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ slug }) });
+                            const j = await res.json();
+                            if (res.ok) alert("Seeded menu and tables successfully");
+                            else alert("Seed failed: " + (j.error || res.statusText));
+                          } catch (e) {
+                            console.error(e);
+                            alert("Seed failed");
+                          }
+                        }}
+                        className="px-3 py-2 bg-orange-600 text-white rounded-xl font-black text-sm"
+                        type="button"
+                      >
+                        SEED INDIAN BASICS
                       </button>
                     </div>
                     <div className="p-6 bg-gray-50 rounded-3xl flex flex-col items-center text-center">

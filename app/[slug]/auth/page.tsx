@@ -78,7 +78,19 @@ export default function AuthPage() {
       };
 
       const docRef = await addDoc(collection(db, "customers"), customerData);
-      
+
+      // Also create a restaurant-scoped customer record for owner visibility (non-blocking)
+      try {
+        if (slug) {
+          await addDoc(collection(db, "restaurants", slug, "customers"), {
+            ...customerData,
+            globalCustomerId: docRef.id,
+          });
+        }
+      } catch (e) {
+        console.warn("Failed to create restaurant-scoped customer record:", e);
+      }
+
       login({
         id: docRef.id,
         ...customerData,

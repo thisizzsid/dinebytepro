@@ -30,8 +30,19 @@ export async function addTable(
   table: Omit<Table, "id">
 ): Promise<Table> {
   const tablesCollection = getTablesCollection(restaurantId);
-  const docRef = await addDoc(tablesCollection, table);
-  return { id: docRef.id, ...table };
+  // Ensure sensible defaults for new tables
+  const paddedTable = {
+    capacity: table.capacity || 4,
+    tableNumber: table.tableNumber || String(Date.now()).slice(-4),
+    isAvailable: typeof table.isAvailable === "boolean" ? table.isAvailable : true,
+    reserved: !!table.reserved,
+    currentPartySize: table.currentPartySize || 0,
+    occupiedAt: table.occupiedAt || null,
+    vacatedAt: table.vacatedAt || null,
+  } as Omit<Table, "id">;
+
+  const docRef = await addDoc(tablesCollection, paddedTable);
+  return { id: docRef.id, ...paddedTable };
 }
 
 export async function updateTable(
