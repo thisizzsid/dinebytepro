@@ -6,7 +6,7 @@ import { AuthProvider } from "../lib/auth-context";
 import { RestaurantProvider } from "../lib/restaurant-context";
 import { TableProvider } from "../lib/table-context";
 import { AdminProvider } from "../lib/admin-context";
-import ThemeProvider from "@/components/ThemeProvider";
+import ThemeProvider from "../components/ThemeProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -25,7 +25,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Ministry Of Chai",
+    title: "DineByte",
   },
 };
 

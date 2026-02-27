@@ -211,6 +211,9 @@ function MenuContent() {
             </span>
           )}
           <span className="text-[10px] font-bold text-gray-300 uppercase tracking-tighter">Verified Device • Secure Ordering</span>
+          <a href="https://www.dinebyte.in" target="_blank" rel="noopener noreferrer" className="ml-auto px-3 py-2 bg-orange-100 text-orange-600 rounded-xl font-black text-xs hover:bg-orange-200 transition-all">
+            🌐 dinebyte.in
+          </a>
         </div>
       </header>
 

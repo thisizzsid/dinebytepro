@@ -53,6 +53,8 @@ import { OrderItem } from "../../../types";
 import { useRouter, useParams } from "next/navigation";
 import { useRestaurant } from "../../../lib/restaurant-context";
 import DarkToggle from "@/components/DarkToggle";
+import MenuItemModal from "@/components/MenuItemModal";
+import { motion } from "framer-motion";
 
 export default function AdminPage() {
   const router = useRouter();
@@ -79,6 +81,13 @@ export default function AdminPage() {
   const [upiId, setUpiId] = useState("");
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [notifSettings, setNotifSettings] = useState({ volume: 1.0, enabled: true });
+
+  // AutoBot State
+  const [autoBotEnabled, setAutoBotEnabled] = useState(false);
+  const [autoBotDelay, setAutoBotDelay] = useState({ prepare: 5, ready: 15 });
+  const [addItemError, setAddItemError] = useState("");
+  const [addItemSuccess, setAddItemSuccess] = useState("");
+  const [editItemError, setEditItemError] = useState("");
 
   useEffect(() => {
     // make sure previous restaurant data doesn't linger when slug changes
@@ -275,20 +284,6 @@ export default function AdminPage() {
     { name: "Fresh Lime Soda", price: 70, category: "Beverages", description: "Bubbly lime drink with salt or sugar." }
   ];
 
-  const handleSeedMenu = async () => {
-    if (!slug) return;
-    try {
-      const promises = indianBasics.map(item => 
-        addDoc(collection(db, "restaurants", slug as string, "menu"), item)
-      );
-      await Promise.all(promises);
-      alert("Indian menu basics seeded successfully!");
-    } catch (e) {
-      console.error(e);
-      alert("Failed to seed menu items.");
-    }
-  };
-
   const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!restaurant) return;
@@ -321,13 +316,34 @@ export default function AdminPage() {
   };
 
   const handleAddItem = async () => {
-    if (!newItem.name || newItem.price <= 0 || !slug) return;
+    setAddItemError("");
+    setAddItemSuccess("");
+    if (!newItem.name || newItem.name.trim().length === 0) {
+      setAddItemError("Item name is required");
+      return;
+    }
+    if (newItem.price <= 0) {
+      setAddItemError("Price must be greater than 0");
+      return;
+    }
+    if (!slug) {
+      setAddItemError("Restaurant not found");
+      return;
+    }
     try {
-      await addDoc(collection(db, "restaurants", slug as string, "menu"), newItem);
+      await addDoc(collection(db, "restaurants", slug as string, "menu"), {
+        ...newItem,
+        isAvailable: true,
+        createdAt: new Date(),
+      });
       setIsAddingItem(false);
       setNewItem({ name: "", description: "", price: 0, category: "Chai Specials" });
-      alert("Item added successfully!");
-    } catch (e) { console.error(e); }
+      setAddItemSuccess("Item added successfully!");
+      setTimeout(() => setAddItemSuccess(""), 3000);
+    } catch (e) {
+      console.error("Error adding item:", e);
+      setAddItemError("Failed to add item. Please try again.");
+    }
   };
 
   const handleEditItem = async () => {
@@ -351,6 +367,22 @@ export default function AdminPage() {
     } catch (e) {
       console.error("Error deleting item:", e);
       alert("Failed to delete item.");
+    }
+  };
+
+  const handleSeedMenu = async () => {
+    if (!slug) return;
+    try {
+      const res = await fetch(`/api/seed-data`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ slug }) });
+      const j = await res.json();
+      if (res.ok) {
+        alert("Seeded menu and tables successfully!");
+      } else {
+        alert("Seed failed: " + (j.error || res.statusText));
+      }
+    } catch (e) {
+      console.error("Seed error:", e);
+      alert("Seed failed");
     }
   };
 
@@ -655,37 +687,26 @@ export default function AdminPage() {
       <main className="flex-1 overflow-y-auto">
         <div className="p-8 lg:p-12 max-w-400 mx-auto">
           {/* Header */}
-          <header className="bg-white px-6 pt-12 pb-8 rounded-b-[3rem] shadow-sm mb-8">
-            <div className="p-4 text-center text-xs text-gray-500">
-          Need help from provider? Email{' '}
-          <a href="mailto:siddhant.anand17@gmail.com" className="underline">
-            siddhant.anand17@gmail.com
-          </a>
-        </div>
+          <header className="bg-white px-6 pt-12 pb-8 rounded-b-[3rem] shadow-sm mb-8 flex items-center justify-between">
+            <div>
+              <div className="p-4 text-center text-xs text-gray-500">
+                Need help from provider? Email{' '}
+                <a href="mailto:siddhant.anand17@gmail.com" className="underline">
+                  siddhant.anand17@gmail.com
+                </a>
+              </div>
+              <div className="flex items-center gap-6 text-xs text-gray-500">
                 <span className="flex items-center gap-2"><Calendar size={16} /> {format(new Date(), 'EEEE, MMM do')}</span>
                 <span className="w-1 h-1 bg-gray-300 rounded-full" />
                 <span className="flex items-center gap-2 text-green-500"><Activity size={16} /> System Online</span>
-
-              <div className="flex items-center gap-3">
-                <div className="relative group">
-                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300 group-focus-within:text-orange-600 transition-colors" size={18} />
-                  <input 
-                    type="text"
-                    placeholder="Search..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="bg-white border-none rounded-2xl py-3 pl-12 pr-6 text-sm font-bold text-gray-900 shadow-sm focus:ring-2 focus:ring-orange-600 min-w-80"
-                  />
-                </div>
-                <button 
-                  className="bg-white p-3 rounded-2xl shadow-sm text-gray-400 hover:text-orange-600 transition-all flex items-center justify-center" 
-                  title="Notifications" 
-                  type="button"
-                  aria-label="Notifications"
-                >
-                  <Bell size={20} />
-                </button>
               </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <DarkToggle />
+              <a href="https://www.dinebyte.in" target="_blank" rel="noopener noreferrer" className="px-4 py-2 bg-orange-100 text-orange-600 rounded-xl font-black text-xs hover:bg-orange-200 transition-all" title="Visit DineByte">
+                🌐 dinebyte.in
+              </a>
+            </div>
           </header>
 
           {/* Dashboard View */}
@@ -770,18 +791,7 @@ export default function AdminPage() {
                     <div className="absolute top-6 right-6 flex items-center gap-3">
                       <DarkToggle />
                       <button
-                        onClick={async () => {
-                          if (!slug) return;
-                          try {
-                            const res = await fetch(`/api/seed-data`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ slug }) });
-                            const j = await res.json();
-                            if (res.ok) alert("Seeded menu and tables successfully");
-                            else alert("Seed failed: " + (j.error || res.statusText));
-                          } catch (e) {
-                            console.error(e);
-                            alert("Seed failed");
-                          }
-                        }}
+                        onClick={handleSeedMenu}
                         className="px-3 py-2 bg-orange-600 text-white rounded-xl font-black text-sm"
                         type="button"
                       >
@@ -1042,7 +1052,7 @@ export default function AdminPage() {
                 <div className="flex gap-3">
                   <button 
                     onClick={handleSeedMenu} 
-                    className="bg-gray-900 text-white px-6 py-3 rounded-2xl font-black text-xs flex items-center gap-2 shadow-lg active:scale-95" 
+                    className="bg-gray-900 text-white px-6 py-3 rounded-2xl font-black text-xs flex items-center gap-2 shadow-lg active:scale-95 transition-all" 
                     title="Seed Indian Basics"
                     type="button"
                     aria-label="Seed Indian Basics"
@@ -1051,7 +1061,7 @@ export default function AdminPage() {
                   </button>
                   <button 
                     onClick={() => setIsAddingItem(true)} 
-                    className="bg-orange-600 text-white px-6 py-3 rounded-2xl font-black text-xs flex items-center gap-2 shadow-lg active:scale-95" 
+                    className="bg-orange-600 text-white px-6 py-3 rounded-2xl font-black text-xs flex items-center gap-2 shadow-lg active:scale-95 transition-all" 
                     title="Add New Item"
                     type="button"
                     aria-label="Add New Item"
@@ -1060,10 +1070,14 @@ export default function AdminPage() {
                   </button>
                 </div>
               </div>
-              {/* ... menu mgmt content preserved ... */}
               <div className="space-y-4">
                 {menuItems.map((item: any) => (
-                  <div key={item.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl">
+                  <motion.div 
+                    key={item.id} 
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl hover:shadow-md transition-all"
+                  >
                     <div>
                       <p className="text-[10px] font-black text-orange-600 uppercase tracking-widest">{item.category}</p>
                       <p className="font-black text-gray-900">{item.name}</p>
@@ -1072,7 +1086,7 @@ export default function AdminPage() {
                     <div className="flex items-center gap-4">
                       <p className="font-black text-gray-900">{formatPrice(item.price)}</p>
                       <button 
-                         onClick={() => setEditingItem(item)} 
+                         onClick={() => { setEditingItem(item); setIsAddingItem(true); }} 
                          className="text-gray-300 hover:text-blue-500 transition-colors" 
                          title="Edit Item"
                          type="button"
@@ -1090,25 +1104,101 @@ export default function AdminPage() {
                          <Trash2 size={18} />
                        </button>
                     </div>
-                  </div>
+                  </motion.div>
                 ))}
               </div>
             </div>
           )}
 
+          {/* Menu Item Modal */}
+          <MenuItemModal
+            isOpen={isAddingItem || !!editingItem}
+            isEditing={!!editingItem}
+            categories={categories}
+            onSave={editingItem ? handleEditItem : handleAddItem}
+            onClose={() => {
+              setIsAddingItem(false);
+              setEditingItem(null);
+              setAddItemError("");
+              setAddItemSuccess("");
+            }}
+            newItem={editingItem || newItem}
+            setNewItem={editingItem ? setEditingItem : setNewItem}
+            error={addItemError || editItemError}
+            success={addItemSuccess}
+          />
+
           {/* Settings View */}
           {activeTab === 'settings' && (
             <div className="bg-white rounded-4xl p-8 shadow-sm border border-gray-100 max-w-2xl space-y-10">
               <h3 className="text-2xl font-black text-gray-900">System Configuration</h3>
-              <div className="space-y-6">
+              
+              <div className="space-y-6 pb-10 border-b border-gray-100">
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">UPI ID for Payments</label>
                 <div className="flex gap-2">
                   <input value={upiId} onChange={e => setUpiId(e.target.value)} placeholder="yourname@upi" className="flex-1 bg-gray-50 border-none rounded-2xl py-4 px-6 font-bold text-gray-900" />
-                  <button onClick={handleSaveSettings} disabled={isSavingSettings} className="bg-orange-600 text-white px-8 rounded-2xl font-black text-xs flex items-center gap-2" type="button" title="Save Settings">{isSavingSettings ? <Loader2 className="animate-spin" /> : <Save size={18} />} SAVE</button>
+                  <button onClick={handleSaveSettings} disabled={isSavingSettings} className="bg-orange-600 text-white px-8 rounded-2xl font-black text-xs flex items-center gap-2 hover:bg-orange-700 transition-all" type="button" title="Save Settings">{isSavingSettings ? <Loader2 className="animate-spin" /> : <Save size={18} />} SAVE</button>
                 </div>
               </div>
+
+              <div className="space-y-6 pb-10 border-b border-gray-100">
+                <h3 className="text-lg font-black text-gray-900">🤖 AutoBot System</h3>
+                <p className="text-sm text-gray-600">Automatically manage orders when you're not available</p>
+                
+                <div className="flex items-center justify-between">
+                  <p className="font-black text-gray-900">Enable AutoBot</p>
+                  <button 
+                    onClick={() => setAutoBotEnabled(!autoBotEnabled)} 
+                    className={`w-16 h-10 rounded-full p-1 transition-all ${autoBotEnabled ? 'bg-orange-600' : 'bg-gray-200'}`} 
+                    type="button"
+                  >
+                    <div className={`w-8 h-8 bg-white rounded-full shadow-md transition-all ${autoBotEnabled ? 'translate-x-6' : 'translate-x-0'}`} />
+                  </button>
+                </div>
+
+                {autoBotEnabled && (
+                  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4 p-4 bg-orange-50 rounded-2xl border border-orange-100">
+                    <div>
+                      <label className="text-[10px] font-black text-orange-600 uppercase tracking-widest ml-1 block mb-2">Auto-Prepare Delay (seconds)</label>
+                      <input 
+                        type="number" 
+                        min={1} 
+                        value={autoBotDelay.prepare} 
+                        onChange={(e) => setAutoBotDelay({ ...autoBotDelay, prepare: parseInt(e.target.value) || 5 })}
+                        className="w-full bg-white border-2 border-orange-200 rounded-xl py-2 px-3 font-bold text-gray-900 focus:border-orange-600 transition-all"
+                      />
+                      <p className="text-[10px] text-gray-600 mt-1">After order received, auto-move to preparing after X seconds</p>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-orange-600 uppercase tracking-widest ml-1 block mb-2">Auto-Ready Delay (seconds)</label>
+                      <input 
+                        type="number" 
+                        min={1} 
+                        value={autoBotDelay.ready} 
+                        onChange={(e) => setAutoBotDelay({ ...autoBotDelay, ready: parseInt(e.target.value) || 15 })}
+                        className="w-full bg-white border-2 border-orange-200 rounded-xl py-2 px-3 font-bold text-gray-900 focus:border-orange-600 transition-all"
+                      />
+                      <p className="text-[10px] text-gray-600 mt-1">After preparing, auto-move to ready after X seconds</p>
+                    </div>
+                  </motion.div>
+                )}
+              </div>
+
+              <div className="space-y-6 pb-10 border-b border-gray-100">
+                <h3 className="text-lg font-black text-gray-900">Website & Social</h3>
+                <a 
+                  href="https://www.dinebyte.in" 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  className="block p-4 bg-gradient-to-r from-orange-50 to-orange-100 border-2 border-orange-200 rounded-2xl hover:shadow-lg transition-all"
+                >
+                  <p className="text-[10px] font-black text-orange-600 uppercase tracking-widest mb-1">DineByte Official</p>
+                  <p className="font-black text-gray-900">🌐 www.dinebyte.in</p>
+                </a>
+              </div>
+
               <div className="pt-10 border-t border-gray-100">
-                <h3 className="text-2xl font-black text-gray-900 mb-8">Notifications</h3>
+                <h3 className="text-lg font-black text-gray-900 mb-8">🔔 Notifications</h3>
                 <div className="flex items-center justify-between mb-6">
                   <p className="font-black text-gray-900">Enable Audio Alerts</p>
                   <button onClick={() => { const next = !notifSettings.enabled; setNotifSettings(prev => ({ ...prev, enabled: next })); notificationManager?.saveSettings(notifSettings.volume, next); }} className={`w-16 h-10 rounded-full p-1 transition-all ${notifSettings.enabled ? 'bg-orange-600' : 'bg-gray-200'}`} type="button" title="Toggle Notifications" aria-label="Toggle Notifications"><div className={`w-8 h-8 bg-white rounded-full shadow-md transition-all ${notifSettings.enabled ? 'translate-x-6' : 'translate-x-0'}`} /></button>
