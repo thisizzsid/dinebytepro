@@ -53,6 +53,8 @@ export default function MenuItemModal({
                 onClick={onClose}
                 className="p-2 hover:bg-gray-100 rounded-xl transition-all"
                 type="button"
+                title="Close Modal"
+                aria-label="Close Modal"
               >
                 <X size={20} />
               </button>
@@ -102,6 +104,8 @@ export default function MenuItemModal({
                   value={newItem.category}
                   onChange={(e) => setNewItem({ ...newItem, category: e.target.value })}
                   className="w-full bg-gray-50 border-2 border-transparent rounded-2xl py-3 px-4 font-bold text-gray-900 focus:ring-0 focus:border-orange-600 transition-all"
+                  title="Select Category"
+                  aria-label="Select Category"
                 >
                   {categories.map((cat) => (
                     <option key={cat} value={cat}>

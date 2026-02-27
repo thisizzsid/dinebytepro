@@ -794,6 +794,8 @@ export default function AdminPage() {
                         onClick={handleSeedMenu}
                         className="px-3 py-2 bg-orange-600 text-white rounded-xl font-black text-sm"
                         type="button"
+                        title="Seed Indian Basics"
+                        aria-label="Seed Indian Basics"
                       >
                         SEED INDIAN BASICS
                       </button>
@@ -1151,6 +1153,8 @@ export default function AdminPage() {
                     onClick={() => setAutoBotEnabled(!autoBotEnabled)} 
                     className={`w-16 h-10 rounded-full p-1 transition-all ${autoBotEnabled ? 'bg-orange-600' : 'bg-gray-200'}`} 
                     type="button"
+                    title="Toggle AutoBot"
+                    aria-label="Toggle AutoBot"
                   >
                     <div className={`w-8 h-8 bg-white rounded-full shadow-md transition-all ${autoBotEnabled ? 'translate-x-6' : 'translate-x-0'}`} />
                   </button>
@@ -1159,24 +1163,30 @@ export default function AdminPage() {
                 {autoBotEnabled && (
                   <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4 p-4 bg-orange-50 rounded-2xl border border-orange-100">
                     <div>
-                      <label className="text-[10px] font-black text-orange-600 uppercase tracking-widest ml-1 block mb-2">Auto-Prepare Delay (seconds)</label>
+                      <label htmlFor="prepare-delay" className="text-[10px] font-black text-orange-600 uppercase tracking-widest ml-1 block mb-2">Auto-Prepare Delay (seconds)</label>
                       <input 
+                        id="prepare-delay"
                         type="number" 
                         min={1} 
                         value={autoBotDelay.prepare} 
                         onChange={(e) => setAutoBotDelay({ ...autoBotDelay, prepare: parseInt(e.target.value) || 5 })}
                         className="w-full bg-white border-2 border-orange-200 rounded-xl py-2 px-3 font-bold text-gray-900 focus:border-orange-600 transition-all"
+                        placeholder="Enter seconds"
+                        title="Auto-Prepare Delay in seconds"
                       />
                       <p className="text-[10px] text-gray-600 mt-1">After order received, auto-move to preparing after X seconds</p>
                     </div>
                     <div>
-                      <label className="text-[10px] font-black text-orange-600 uppercase tracking-widest ml-1 block mb-2">Auto-Ready Delay (seconds)</label>
+                      <label htmlFor="ready-delay" className="text-[10px] font-black text-orange-600 uppercase tracking-widest ml-1 block mb-2">Auto-Ready Delay (seconds)</label>
                       <input 
+                        id="ready-delay"
                         type="number" 
                         min={1} 
                         value={autoBotDelay.ready} 
                         onChange={(e) => setAutoBotDelay({ ...autoBotDelay, ready: parseInt(e.target.value) || 15 })}
                         className="w-full bg-white border-2 border-orange-200 rounded-xl py-2 px-3 font-bold text-gray-900 focus:border-orange-600 transition-all"
+                        placeholder="Enter seconds"
+                        title="Auto-Ready Delay in seconds"
                       />
                       <p className="text-[10px] text-gray-600 mt-1">After preparing, auto-move to ready after X seconds</p>
                     </div>
@@ -1190,7 +1200,8 @@ export default function AdminPage() {
                   href="https://www.dinebyte.in" 
                   target="_blank" 
                   rel="noopener noreferrer" 
-                  className="block p-4 bg-gradient-to-r from-orange-50 to-orange-100 border-2 border-orange-200 rounded-2xl hover:shadow-lg transition-all"
+                  className="block p-4 bg-linear-to-r from-orange-50 to-orange-100 border-2 border-orange-200 rounded-2xl hover:shadow-lg transition-all"
+                  title="Visit DineByte Website"
                 >
                   <p className="text-[10px] font-black text-orange-600 uppercase tracking-widest mb-1">DineByte Official</p>
                   <p className="font-black text-gray-900">🌐 www.dinebyte.in</p>
