@@ -80,6 +80,14 @@ export default function AdminPage() {
   const [notifSettings, setNotifSettings] = useState({ volume: 1.0, enabled: true });
 
   useEffect(() => {
+    // make sure previous restaurant data doesn't linger when slug changes
+    setOrders([]);
+    setMenuItems([]);
+    // reset auth flag; it'll be recalculated below
+    setIsAdminAuthenticated(false);
+  }, [slug]);
+
+  useEffect(() => {
     if (notificationManager) {
       setNotifSettings(notificationManager.getSettings());
     }
@@ -98,8 +106,8 @@ export default function AdminPage() {
   }, [restaurant, isRestroLoading, router]);
 
   useEffect(() => {
-    const isAuth = sessionStorage.getItem(`dinebyte_auth_${slug}`) === "true";
-    if (isAuth) setIsAdminAuthenticated(true);
+    const isAuth = slug && sessionStorage.getItem(`dinebyte_auth_${slug}`) === "true";
+    setIsAdminAuthenticated(!!isAuth);
 
     const cleanupOldOrders = async () => {
       if (!slug) return;
@@ -481,6 +489,13 @@ export default function AdminPage() {
               INITIALIZE ACCESS <ArrowRight size={18} />
             </button>
           </form>
+          {/* provider support email for admin access issues */}
+          <p className="text-[10px] text-gray-500 mt-6">
+            Need help from provider? Email{' '}
+            <a href="mailto:siddhant.anand17@gmail.com" className="underline">
+              siddhant.anand17@gmail.com
+            </a>
+          </p>
         </div>
       </div>
     );
@@ -639,17 +654,16 @@ export default function AdminPage() {
       <main className="flex-1 overflow-y-auto">
         <div className="p-8 lg:p-12 max-w-400 mx-auto">
           {/* Header */}
-          <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
-            <div>
-              <h2 className="text-4xl font-black text-gray-900 tracking-tight mb-2 uppercase">
-                {activeTab === 'dashboard' ? 'Overview' : activeTab === 'live' ? 'Order Queue' : activeTab === 'menu' ? 'Menu Catalog' : activeTab === 'settings' ? 'System Config' : activeTab === 'history' ? 'Order History (48h)' : 'Order History'}
-              </h2>
-              <div className="flex items-center gap-4 text-gray-400 font-bold text-sm">
+          <header className="bg-white px-6 pt-12 pb-8 rounded-b-[3rem] shadow-sm mb-8">
+            <div className="p-4 text-center text-xs text-gray-500">
+          Need help from provider? Email{' '}
+          <a href="mailto:siddhant.anand17@gmail.com" className="underline">
+            siddhant.anand17@gmail.com
+          </a>
+        </div>
                 <span className="flex items-center gap-2"><Calendar size={16} /> {format(new Date(), 'EEEE, MMM do')}</span>
                 <span className="w-1 h-1 bg-gray-300 rounded-full" />
                 <span className="flex items-center gap-2 text-green-500"><Activity size={16} /> System Online</span>
-              </div>
-            </div>
 
               <div className="flex items-center gap-3">
                 <div className="relative group">

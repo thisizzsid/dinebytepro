@@ -1,13 +1,14 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 
+// updated to the new credentials provided by the user
 const firebaseConfig = {
-  apiKey: "AIzaSyBIW6Hg081t9oVloJC4MDpj-WY-P8XXnao",
-  authDomain: "for-order-5b9b4.firebaseapp.com",
-  projectId: "for-order-5b9b4",
-  storageBucket: "for-order-5b9b4.firebasestorage.app",
-  messagingSenderId: "236238925376",
-  appId: "1:236238925376:web:c532dcf9d45429a6dd39a5"
+  apiKey: "AIzaSyAqmpzU4Ub-OFJHvnCWsL-gEBjZi-RQwOA",
+  authDomain: "dinebyteforclient.firebaseapp.com",
+  projectId: "dinebyteforclient",
+  storageBucket: "dinebyteforclient.firebasestorage.app",
+  messagingSenderId: "302725647154",
+  appId: "1:302725647154:web:0983647f28ebc4c6bc652b"
 };
 
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);

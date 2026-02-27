@@ -20,12 +20,7 @@ import {
   BarChart3, 
   Settings2, 
   LogOut,
-  ChevronRight,
-  ShoppingBag,
-  User,
-  IndianRupee,
-  Clock,
-  CheckCircle2
+  Clock
 } from "lucide-react";
 import { format } from "date-fns";
 import { useRouter, useParams } from "next/navigation";

@@ -71,8 +71,16 @@ export default function TableModal({
           <input
             type="number"
             id="capacity"
-            value={capacity}
-            onChange={(e) => setCapacity(parseInt(e.target.value, 10))}
+            value={capacity || ""}
+            onChange={(e) => {
+              const val = e.target.value;
+              if (val === "") {
+                setCapacity(0);
+              } else {
+                const num = parseInt(val, 10);
+                setCapacity(isNaN(num) ? 0 : num);
+              }
+            }}
             min="1"
             className="w-full px-3 py-2 border border-gray-300 rounded-md"
           />

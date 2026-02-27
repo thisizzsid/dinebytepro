@@ -7,7 +7,7 @@ import { useCart } from "../../../lib/cart-context";
 import { useAuth } from "../../../lib/auth-context";
 import { useRestaurant } from "@/lib/restaurant-context";
 import { formatPrice } from "../../../lib/utils";
-import { ShoppingBag, Plus, Minus, Check, Clock, Table, Trash2, Utensils, Navigation, MessageCircle, Phone, HelpCircle, AlertCircle } from "lucide-react";
+import { ShoppingBag, Plus, Minus, Check, Clock, Table, Trash2, Utensils, Navigation, MessageCircle, Phone, HelpCircle, AlertCircle, Mail } from "lucide-react";
 import { db } from "../../../lib/firebase/config";
 import { collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, doc, where, getDocs, updateDoc } from "firebase/firestore";
 import { OrderType, PaymentType, MenuItem, ItemVariant, OrderItem } from "../../../types";
@@ -412,6 +412,15 @@ function MenuContent() {
                   <div>
                     <p className="text-sm font-black text-gray-900">Voice Call</p>
                     <p className="text-[10px] text-gray-500 font-bold uppercase">Direct Support</p>
+                  </div>
+                </a>
+                <a href="mailto:siddhant.anand17@gmail.com" className="flex items-center gap-3 p-3 hover:bg-gray-100 rounded-2xl transition-colors">
+                  <div className="w-10 h-10 bg-gray-500 rounded-xl flex items-center justify-center text-white">
+                    <Mail size={20} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-black text-gray-900">Email</p>
+                    <p className="text-[10px] text-gray-500 font-bold uppercase">Support</p>
                   </div>
                 </a>
               </div>

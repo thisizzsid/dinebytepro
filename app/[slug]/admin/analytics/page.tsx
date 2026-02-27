@@ -9,7 +9,6 @@ import {
   BarChart3, 
   Calendar, 
   TrendingUp, 
-  Clock, 
   LayoutDashboard, 
   Activity, 
   Table as TableIcon, 
@@ -17,7 +16,6 @@ import {
   FileText, 
   Settings2, 
   LogOut,
-  ChevronRight,
   Timer,
   Users,
   AlertCircle
@@ -52,7 +50,12 @@ export default function AnalyticsPage() {
     }).filter(t => t !== null);
   };
 
-  const turnoverData = calculateTurnover() as any[];
+  interface TurnoverEntry {
+    tableNumber: string;
+    occupiedTime: number;
+    capacity: number;
+  }
+  const turnoverData = calculateTurnover() as TurnoverEntry[];
   const avgTurnover = turnoverData.length > 0 
     ? turnoverData.reduce((sum, d) => sum + d.occupiedTime, 0) / turnoverData.length 
     : 0;

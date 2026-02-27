@@ -105,6 +105,30 @@ function TrackContent() {
     }
   };
 
+  // cancellation support: allow user to cancel order within 2 minutes of placing
+  const canCancel = order ? (() => {
+    if (!['received', 'preparing'].includes(order.orderStatus)) return false;
+    const createdMs = order.createdAt && typeof (order.createdAt as any).toMillis === 'function'
+      ? (order.createdAt as any).toMillis()
+      : order.createdAt instanceof Date
+        ? order.createdAt.getTime()
+        : 0;
+    return Date.now() - createdMs < 2 * 60 * 1000;
+  })() : false;
+
+  const handleCancelOrder = async () => {
+    if (!orderId || !slug || !order) return;
+    try {
+      const orderRef = doc(db, "restaurants", slug as string, "orders", orderId);
+      await updateDoc(orderRef, { orderStatus: 'cancelled' });
+      alert('Your order has been cancelled.');
+      router.push(`/${slug}/menu`);
+    } catch (e) {
+      console.error('Cancel error:', e);
+      alert('Failed to cancel order.');
+    }
+  };
+
   const generateReceipt = () => {
     if (!order) return;
 
@@ -228,6 +252,24 @@ function TrackContent() {
             </div>
           </div>
       </header>
+
+        {/* cancellation notice/button */}
+        {canCancel && (
+          <div className="px-6 mb-6">
+            <div className="bg-red-50 border border-red-100 rounded-2xl p-4 text-center">
+              <p className="text-red-600 font-black mb-2">Change of plans?</p>
+              <button
+                onClick={handleCancelOrder}
+                className="bg-red-600 text-white px-6 py-3 rounded-2xl font-black text-sm"
+              >
+                Cancel Order
+              </button>
+              <p className="text-xs text-red-400 mt-2">
+                You can cancel within 2 minutes of placing the order.
+              </p>
+            </div>
+          </div>
+        )}
 
       <div className="px-6 space-y-8">
         {/* Notification Settings */}
