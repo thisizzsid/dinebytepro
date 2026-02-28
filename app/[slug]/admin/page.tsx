@@ -2,8 +2,9 @@
 
 
 import { useEffect, useState } from "react";
-import { db } from "../../../lib/firebase/config";
+import { db, auth } from "../../../lib/firebase/config";
 import { collection, query, orderBy, onSnapshot, updateDoc, doc, where, limit, addDoc, deleteDoc, setDoc, getDocs, getDoc, DocumentData, QueryDocumentSnapshot } from "firebase/firestore";
+import { signInWithEmailAndPassword, sendPasswordResetEmail, signOut } from "firebase/auth";
 import { Order } from "../../../types/models";
 import { formatPrice } from "../../../lib/utils";
 import { 
@@ -61,7 +62,7 @@ export default function AdminPage() {
   const { slug } = useParams<{ slug: string }>();
   const { restaurant, isLoading: isRestroLoading } = useRestaurant();
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
-  const [adminUsername, setAdminUsername] = useState("");
+  const [adminEmail, setAdminEmail] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
   const [authError, setAuthError] = useState("");
 
@@ -291,10 +292,28 @@ export default function AdminPage() {
     try {
       const restroRef = doc(db, "restaurants", slug as string);
       const restroSnap = await getDoc(restroRef);
-      
-      if (restroSnap.exists()) {
-        const data = restroSnap.data();
-        if (data.admin?.username === adminUsername && data.admin?.password === adminPassword) {
+      if (!restroSnap.exists()) {
+        setAuthError("Restaurant does not exist");
+        return;
+      }
+
+      const data = restroSnap.data();
+
+      // if the restaurant has been migrated to Firebase auth use that
+      if (data.adminUid) {
+        const userCredential = await signInWithEmailAndPassword(auth, adminEmail, adminPassword);
+        const user = userCredential.user;
+        if (data.adminUid === user.uid) {
+          setIsAdminAuthenticated(true);
+          sessionStorage.setItem(`dinebyte_auth_${slug}`, "true");
+          setAuthError("");
+        } else {
+          setAuthError("Email is not associated with this restaurant");
+          await signOut(auth);
+        }
+      } else {
+        // legacy fallback: treat email field as username
+        if (data.admin?.username === adminEmail && data.admin?.password === adminPassword) {
           setIsAdminAuthenticated(true);
           sessionStorage.setItem(`dinebyte_auth_${slug}`, "true");
           setAuthError("");
@@ -308,11 +327,12 @@ export default function AdminPage() {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     setIsAdminAuthenticated(false);
-    setAdminUsername("");
+    setAdminEmail("");
     setAdminPassword("");
     sessionStorage.removeItem(`dinebyte_auth_${slug}`);
+    try { await signOut(auth); } catch {}
   };
 
   const handleAddItem = async () => {
@@ -480,22 +500,22 @@ export default function AdminPage() {
           
           <form onSubmit={handleAdminLogin} className="space-y-6">
             <div className="space-y-2 text-left">
-              <label htmlFor="admin-user" className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Username</label>
+              <label htmlFor="admin-email" className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Email address</label>
               <div className="relative group">
                 <User className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-300 group-focus-within:text-orange-600 transition-colors" size={20} />
                 <input 
-                  id="admin-user"
-                  type="text"
-                  value={adminUsername}
-                  onChange={(e) => setAdminUsername(e.target.value)}
-                  placeholder="Enter Username"
+                  id="admin-email"
+                  type="email"
+                  value={adminEmail}
+                  onChange={(e) => setAdminEmail(e.target.value)}
+                  placeholder="name@domain.com"
                   className="w-full bg-gray-50 border-2 border-transparent focus:border-orange-600 rounded-2xl py-4 pl-14 pr-6 text-gray-900 font-black transition-all outline-none"
                 />
               </div>
             </div>
 
             <div className="space-y-2 text-left">
-              <label htmlFor="admin-pass" className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Secure Password</label>
+              <label htmlFor="admin-pass" className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Password</label>
               <div className="relative group">
                 <Lock className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-300 group-focus-within:text-orange-600 transition-colors" size={20} />
                 <input 
@@ -507,6 +527,19 @@ export default function AdminPage() {
                   className="w-full bg-gray-50 border-2 border-transparent focus:border-orange-600 rounded-2xl py-4 pl-14 pr-6 text-gray-900 font-black tracking-widest transition-all outline-none"
                 />
               </div>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!adminEmail) return setAuthError("Enter your email to reset password");
+                  try {
+                    await sendPasswordResetEmail(auth, adminEmail);
+                    setAuthError("Password reset email sent");
+                  } catch (e: any) {
+                    setAuthError(e.message || "Failed to send reset email");
+                  }
+                }}
+                className="text-xs text-blue-600 hover:underline mt-1"
+              >Forgot password?</button>
             </div>
 
             {authError && (
@@ -519,8 +552,11 @@ export default function AdminPage() {
               type="submit"
               className="w-full bg-gray-900 text-white py-5 rounded-2xl font-black text-sm tracking-widest shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-3"
             >
-              INITIALIZE ACCESS <ArrowRight size={18} />
+              ADMIN LOGIN <ArrowRight size={18} />
             </button>
+            <p className="text-xs text-gray-500 mt-4">
+              New here? <a href="/onboarding" className="text-blue-600 hover:underline">Activate your restaurant</a>
+            </p>
           </form>
           {/* provider support email for admin access issues */}
           <p className="text-[10px] text-gray-500 mt-6">
