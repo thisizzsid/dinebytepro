@@ -292,8 +292,11 @@ export default function InvoiceSettingsPage() {
                           <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">CGST (%)</label>
                           <input 
                             type="number"
-                            value={cgst}
-                            onChange={(e) => setCgst(parseFloat(e.target.value))}
+                            value={cgst || 0}
+                            onChange={(e) => setCgst(e.target.value === '' ? 0 : parseFloat(e.target.value) || 0)}
+                            min="0"
+                            max="100"
+                            step="0.01"
                             className="w-full bg-gray-50 border-none rounded-2xl py-4 px-6 text-sm font-bold text-gray-900 focus:ring-2 focus:ring-orange-600"
                             aria-label="CGST Percentage"
                           />
@@ -302,8 +305,11 @@ export default function InvoiceSettingsPage() {
                           <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">SGST (%)</label>
                           <input 
                             type="number"
-                            value={sgst}
-                            onChange={(e) => setSgst(parseFloat(e.target.value))}
+                            value={sgst || 0}
+                            onChange={(e) => setSgst(e.target.value === '' ? 0 : parseFloat(e.target.value) || 0)}
+                            min="0"
+                            max="100"
+                            step="0.01"
                             className="w-full bg-gray-50 border-none rounded-2xl py-4 px-6 text-sm font-bold text-gray-900 focus:ring-2 focus:ring-orange-600"
                             aria-label="SGST Percentage"
                           />
@@ -312,8 +318,11 @@ export default function InvoiceSettingsPage() {
                           <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">IGST (%)</label>
                           <input 
                             type="number"
-                            value={igst}
-                            onChange={(e) => setIgst(parseFloat(e.target.value))}
+                            value={igst || 0}
+                            onChange={(e) => setIgst(e.target.value === '' ? 0 : parseFloat(e.target.value) || 0)}
+                            min="0"
+                            max="100"
+                            step="0.01"
                             className="w-full bg-gray-50 border-none rounded-2xl py-4 px-6 text-sm font-bold text-gray-900 focus:ring-2 focus:ring-orange-600"
                             aria-label="IGST Percentage"
                           />
