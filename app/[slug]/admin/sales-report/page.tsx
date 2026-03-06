@@ -33,6 +33,9 @@ import { format } from "date-fns";
 import { useRouter, useParams } from "next/navigation";
 import { formatPrice } from "@/lib/utils";
 
+import AdminSidebar from "@/components/AdminSidebar";
+import { motion, AnimatePresence } from "framer-motion";
+
 export default function SalesReportPage() {
   const router = useRouter();
   const { slug } = useParams<{ slug: string }>();
@@ -51,6 +54,17 @@ export default function SalesReportPage() {
       });
     }
   }, [restaurant]);
+
+  // Group data for the chart
+  const chartData = filteredOrders.reduce((acc: any, order) => {
+    const date = format(order.createdAt.toDate(), 'MMM dd');
+    if (!acc[date]) acc[date] = 0;
+    acc[date] += order.totalAmount;
+    return acc;
+  }, {});
+
+  const chartLabels = Object.keys(chartData).sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+  const maxSales = Math.max(...Object.values(chartData) as number[], 1000);
 
   const applyFilter = (allOrders: Order[], startStr: string, endStr: string) => {
     if (!startStr || !endStr) {
@@ -123,134 +137,11 @@ export default function SalesReportPage() {
 
   return (
     <AdminGuard>
-      <div className="min-h-screen bg-gray-50 flex">
-        {/* Sidebar */}
-        <aside className="hidden lg:flex w-72 bg-gray-900 flex-col h-screen sticky top-0">
-          <div className="p-8">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center p-1 overflow-hidden">
-                <img src="/moclogo.png" alt="Logo" className="w-full h-full object-contain" />
-              </div>
-              <h1 className="text-xl font-black text-white leading-tight tracking-tight">DineByte</h1>
-            </div>
-            <p className="text-[10px] text-gray-500 font-black uppercase tracking-[0.2em] ml-1">Restaurant Management</p>
-          </div>
-
-          <nav className="flex-1 px-4 space-y-2 overflow-y-auto">
-            <p className="px-4 text-[10px] font-black text-gray-600 uppercase tracking-widest mb-2 mt-4">Main</p>
-            <button 
-              onClick={() => router.push(`/${slug}/admin`)}
-              className="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl font-black text-sm text-gray-400 hover:bg-white/5 hover:text-white transition-all"
-              type="button"
-              title="Dashboard"
-              aria-label="Dashboard"
-            >
-              <LayoutDashboard size={20} /> DASHBOARD
-            </button>
-            <button 
-              onClick={() => router.push(`/${slug}/admin`)}
-              className="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl font-black text-sm text-gray-400 hover:bg-white/5 hover:text-white transition-all"
-              type="button"
-              title="Live Orders"
-              aria-label="Live Orders"
-            >
-              <Activity size={20} /> LIVE ORDERS
-            </button>
-            
-            <p className="px-4 text-[10px] font-black text-gray-600 uppercase tracking-widest mb-2 mt-8">Operations</p>
-            <button 
-              onClick={() => router.push(`/${slug}/admin/tables`)}
-              className="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl font-black text-sm text-gray-400 hover:bg-white/5 hover:text-white transition-all"
-              type="button"
-              title="Table Mapping"
-              aria-label="Table Mapping"
-            >
-              <TableIcon size={20} /> TABLE MAPPING
-            </button>
-            <button 
-              onClick={() => router.push(`/${slug}/admin`)}
-              className="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl font-black text-sm text-gray-400 hover:bg-white/5 hover:text-white transition-all"
-              type="button"
-              title="Menu Catalog"
-              aria-label="Menu Catalog"
-            >
-              <List size={20} /> MENU CATALOG
-            </button>
-
-            <p className="px-4 text-[10px] font-black text-gray-600 uppercase tracking-widest mb-2 mt-8">Reports & Billing</p>
-            <button 
-              className="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl font-black text-sm bg-orange-600 text-white shadow-lg shadow-orange-600/20 transition-all"
-              type="button"
-              title="Sales Analytics"
-              aria-label="Sales Analytics"
-            >
-              <BarChart3 size={20} /> SALES ANALYTICS
-            </button>
-            <button 
-              onClick={() => router.push(`/${slug}/admin/invoices`)}
-              className="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl font-black text-sm text-gray-400 hover:bg-white/5 hover:text-white transition-all"
-              type="button"
-              title="Digital Bills"
-              aria-label="Digital Bills"
-            >
-              <FileText size={20} /> DIGITAL BILLS
-            </button>
-            <button 
-              onClick={() => router.push(`/${slug}/admin/invoice-settings`)}
-              className="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl font-black text-sm text-gray-400 hover:bg-white/5 hover:text-white transition-all"
-              type="button"
-              title="Billing Config"
-              aria-label="Billing Config"
-            >
-              <Settings2 size={20} /> BILLING CONFIG
-            </button>
-            <button 
-              onClick={() => router.push(`/${slug}/admin/analytics`)}
-              className="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl font-black text-sm text-gray-400 hover:bg-white/5 hover:text-white transition-all"
-              type="button"
-              title="Turnover Insights"
-              aria-label="Turnover Insights"
-            >
-              <Clock size={20} /> TURNOVER INSIGHTS
-            </button>
-
-            <p className="px-4 text-[10px] font-black text-gray-600 uppercase tracking-widest mb-2 mt-8">System</p>
-            <button 
-              onClick={() => router.push(`/${slug}/admin`)}
-              className="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl font-black text-sm text-gray-400 hover:bg-white/5 hover:text-white transition-all"
-              type="button"
-              title="Settings"
-              aria-label="Settings"
-            >
-              <Settings2 size={20} /> SETTINGS
-            </button>
-          </nav>
-
-          <div className="p-4 mt-auto">
-            <div className="bg-white/5 p-4 rounded-2xl border border-white/5 mb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-orange-600 rounded-xl flex items-center justify-center text-white font-black">SA</div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-black text-white truncate">Super Admin</p>
-                  <p className="text-[10px] text-gray-500 font-bold truncate">Terminal 01</p>
-                </div>
-                <button 
-                  onClick={() => {
-                    sessionStorage.removeItem("moc_admin_auth");
-                    router.push(`/${slug}/admin`);
-                  }}
-                  className="p-2 text-gray-500 hover:text-red-500 transition-colors"
-                  title="Logout"
-                >
-                  <LogOut size={18} />
-                </button>
-              </div>
-            </div>
-          </div>
-        </aside>
+      <div className="min-h-screen bg-gray-50 flex overflow-hidden">
+        <AdminSidebar />
 
         {/* Main Content */}
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-y-auto bg-gray-50/50">
           <div className="p-8 lg:p-12 max-w-400 mx-auto">
             {/* Header */}
             <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
@@ -348,6 +239,61 @@ export default function SalesReportPage() {
                 <p className="mt-4 text-[10px] text-white/40 font-bold uppercase tracking-widest">VS PREVIOUS PERIOD</p>
               </div>
             </div>
+
+            {/* Sales Performance Chart */}
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-white p-10 rounded-[3rem] shadow-sm border border-gray-100 mb-12"
+            >
+              <div className="flex items-center justify-between mb-10">
+                <div>
+                  <h3 className="text-2xl font-black text-gray-900 flex items-center gap-3">
+                    <BarChart3 size={24} className="text-orange-600" /> SALES PERFORMANCE
+                  </h3>
+                  <p className="text-[10px] text-gray-400 font-black uppercase tracking-[0.3em] mt-1">Revenue distribution by timeline</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-3 h-3 bg-orange-600 rounded-full" />
+                  <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Revenue (INR)</span>
+                </div>
+              </div>
+
+              <div className="relative h-64 flex items-end gap-3 md:gap-6 px-4">
+                {/* Y-Axis Guideline */}
+                <div className="absolute inset-x-0 top-0 border-t border-gray-50 h-full flex flex-col justify-between pointer-events-none">
+                  <div className="border-t border-gray-50 w-full" />
+                  <div className="border-t border-gray-50 w-full" />
+                  <div className="border-t border-gray-50 w-full" />
+                </div>
+
+                {chartLabels.length > 0 ? chartLabels.map((label, idx) => {
+                  const value = chartData[label];
+                  const height = (value / maxSales) * 100;
+                  return (
+                    <div key={label} className="flex-1 flex flex-col items-center group relative h-full justify-end">
+                      <motion.div 
+                        initial={{ height: 0 }}
+                        animate={{ height: `${height}%` }}
+                        transition={{ delay: idx * 0.05, type: "spring", stiffness: 100 }}
+                        className="w-full bg-orange-600/10 hover:bg-orange-600 rounded-t-xl transition-all relative"
+                      >
+                        <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[10px] font-black px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap shadow-xl z-10">
+                          {formatPrice(value)}
+                        </div>
+                      </motion.div>
+                      <span className="text-[9px] font-black text-gray-400 uppercase tracking-tighter mt-4 -rotate-45 md:rotate-0 whitespace-nowrap">
+                        {label}
+                      </span>
+                    </div>
+                  );
+                }) : (
+                  <div className="absolute inset-0 flex items-center justify-center text-gray-300 font-black uppercase tracking-widest text-xs opacity-50">
+                    No data points available for this period
+                  </div>
+                )}
+              </div>
+            </motion.div>
 
             {/* Sales Table */}
             <div className="bg-white rounded-4xl shadow-sm border border-gray-100 overflow-hidden">

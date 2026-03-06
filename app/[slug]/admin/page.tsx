@@ -2,9 +2,9 @@
 
 
 import { useEffect, useState } from "react";
-import { db, auth } from "../../../lib/firebase/config";
-import { collection, query, orderBy, onSnapshot, updateDoc, doc, where, limit, addDoc, deleteDoc, setDoc, getDocs, getDoc, DocumentData, QueryDocumentSnapshot } from "firebase/firestore";
-import { signInWithEmailAndPassword, sendPasswordResetEmail, signOut } from "firebase/auth";
+import { db, auth, googleProvider } from "../../../lib/firebase/config";
+import { collection, query, orderBy, onSnapshot, updateDoc, doc, where, limit, addDoc, deleteDoc, setDoc, getDocs, getDoc, DocumentData, QueryDocumentSnapshot, serverTimestamp } from "firebase/firestore";
+import { signInWithEmailAndPassword, sendPasswordResetEmail, signOut, signInWithPopup } from "firebase/auth";
 import { Order } from "../../../types/models";
 import { formatPrice } from "../../../lib/utils";
 import { 
@@ -13,12 +13,9 @@ import {
   CheckCircle2, 
   Clock, 
   ShoppingBag, 
-  CreditCard, 
   Search, 
   LayoutGrid, 
   List, 
-  Settings, 
-  MoreVertical,
   Table as TableIcon,
   Phone,
   User,
@@ -31,21 +28,17 @@ import {
   Lock,
   ArrowRight,
   AlertCircle,
-  BarChart3,
   FileText,
-  Settings2,
-  X,
   Plus,
   Edit2,
   Trash2,
   Check,
   Save,
   Volume2,
-  VolumeX,
-  LogOut,
-  LayoutDashboard,
   Timer,
-  Utensils
+  Utensils,
+  Minus,
+  X
 } from "lucide-react";
 import { format } from "date-fns";
 import { QRCodeSVG } from "qrcode.react";
@@ -55,7 +48,11 @@ import { useRouter, useParams } from "next/navigation";
 import { useRestaurant } from "../../../lib/restaurant-context";
 import DarkToggle from "@/components/DarkToggle";
 import MenuItemModal from "@/components/MenuItemModal";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
+import { getBusinessInsights } from "../../../lib/gemini";
+import { Sparkles as SparklesIcon, BrainCircuit, Lightbulb, TrendingUp } from "lucide-react";
+
+import AdminSidebar from "@/components/AdminSidebar";
 
 export default function AdminPage() {
   const router = useRouter();
@@ -69,17 +66,52 @@ export default function AdminPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  const [searchTerm, setSearchTerm] = useState("");
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'live' | 'completed' | 'menu' | 'settings' | 'history'>('dashboard');
+
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'live' | 'completed' | 'menu' | 'settings' | 'history' | 'inventory'>('dashboard');
+
+  // Sync state with URL query parameter
+  useEffect(() => {
+    const handleLocationChange = () => {
+      const searchParams = new URLSearchParams(window.location.search);
+      const tab = searchParams.get('tab') as any;
+      if (tab && ['dashboard', 'live', 'completed', 'menu', 'settings', 'history', 'inventory'].includes(tab)) {
+        setActiveTab(tab);
+      } else {
+        setActiveTab('dashboard');
+      }
+    };
+
+    handleLocationChange();
+    
+    // Listen for state changes
+    window.addEventListener('popstate', handleLocationChange);
+    return () => window.removeEventListener('popstate', handleLocationChange);
+  }, []);
+
+  // Update URL when tab changes internally
+  const handleTabChange = (tab: string) => {
+    setActiveTab(tab as any);
+    const newUrl = `${window.location.pathname}?tab=${tab}`;
+    window.history.pushState({ path: newUrl }, '', newUrl);
+  };
 
   // Menu Management State
   const [menuItems, setMenuItems] = useState<any[]>([]);
   const [isAddingItem, setIsAddingItem] = useState(false);
   const [editingItem, setEditingItem] = useState<any | null>(null);
-  const [newItem, setNewItem] = useState({ name: "", description: "", price: 0, category: "Chai Specials" });
+  const [newItem, setNewItem] = useState({ 
+    name: "", 
+    description: "", 
+    price: 0, 
+    category: "Main Course (Veg)",
+    type: "veg" as "veg" | "non-veg" | "egg",
+    ingredients: [] as any[]
+  });
   
   // Settings State
   const [upiId, setUpiId] = useState("");
+  const [currency, setCurrency] = useState("INR");
+  const [timezone, setTimezone] = useState("Asia/Kolkata");
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [notifSettings, setNotifSettings] = useState({ volume: 1.0, enabled: true });
 
@@ -89,6 +121,58 @@ export default function AdminPage() {
   const [addItemError, setAddItemError] = useState("");
   const [addItemSuccess, setAddItemSuccess] = useState("");
   const [editItemError, setEditItemError] = useState("");
+
+  // AI Insights State
+  const [aiInsights, setAiInsights] = useState<string | null>(null);
+  const [isAiLoading, setIsAiLoading] = useState(false);
+
+  // Inventory State
+  const [inventoryItems, setInventoryItems] = useState<any[]>([]);
+  const [isAddingInventory, setIsAddingInventory] = useState(false);
+  const [newInventoryItem, setNewInventoryItem] = useState({
+    name: "",
+    quantity: 0,
+    unit: "kg",
+    lowStockThreshold: 1,
+    category: "Vegetables"
+  });
+
+  const fetchAiInsights = async () => {
+    if (!restaurant || orders.length === 0) return;
+    setIsAiLoading(true);
+    
+    // Calculate basic stats for AI
+    const orderDate = (o: Order) => o.createdAt && typeof (o.createdAt as any).toDate === 'function' 
+      ? (o.createdAt as any).toDate() 
+      : (o.createdAt as any) instanceof Date ? o.createdAt : new Date();
+    
+    const isToday = (date: Date) => date.toDateString() === new Date().toDateString();
+    
+    const todayOrders = orders.filter(o => isToday(orderDate(o)));
+    const revenueToday = todayOrders.reduce((sum, o) => sum + (o.orderStatus === 'delivered' ? o.totalAmount : 0), 0);
+    
+    // Get popular items (simple logic)
+    const itemCounts: Record<string, number> = {};
+    todayOrders.forEach(o => {
+      o.items.forEach(i => {
+        itemCounts[i.name] = (itemCounts[i.name] || 0) + i.quantity;
+      });
+    });
+    const popularItems = Object.entries(itemCounts)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 3)
+      .map(([name]) => name);
+
+    const insights = await getBusinessInsights({
+      name: restaurant.name,
+      ordersToday: todayOrders.length,
+      revenueToday: formatPrice(revenueToday),
+      popularItems: popularItems.length > 0 ? popularItems : ["No orders yet today"]
+    });
+    
+    setAiInsights(insights);
+    setIsAiLoading(false);
+  };
 
   useEffect(() => {
     // make sure previous restaurant data doesn't linger when slug changes
@@ -197,7 +281,10 @@ export default function AdminPage() {
 
     const settingsUnsub = onSnapshot(doc(db, "restaurants", slug as string, "settings", "config"), (doc) => {
       if (doc.exists()) {
-        setUpiId(doc.data().upiId || "");
+        const data = doc.data();
+        setUpiId(data.upiId || "");
+        setCurrency(data.currency || "INR");
+        setTimezone(data.timezone || "Asia/Kolkata");
       }
     });
 
@@ -207,6 +294,21 @@ export default function AdminPage() {
       settingsUnsub();
     };
   }, [slug]);
+
+  useEffect(() => {
+    if (!slug || activeTab !== 'inventory') return;
+
+    const inventoryQ = query(collection(db, "restaurants", slug as string, "inventory"), orderBy("name"));
+    const unsubscribeInventory = onSnapshot(inventoryQ, (snapshot) => {
+      const inventoryData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setInventoryItems(inventoryData);
+    });
+
+    return () => unsubscribeInventory();
+  }, [slug, activeTab]);
 
   const categories = [
     "Chai Specials",
@@ -220,70 +322,35 @@ export default function AdminPage() {
     "Fast Food"
   ];
 
-  const indianBasics = [
-    // Chai Specials
-    { name: "Adrak Wali Chai", price: 35, category: "Chai Specials", description: "Traditional ginger-infused milk tea." },
-    { name: "Masala Chai", price: 40, category: "Chai Specials", description: "Robust tea brewed with aromatic Indian spices." },
-    { name: "Elaichi Chai", price: 35, category: "Chai Specials", description: "Cardamom flavored creamy milk tea." },
-    { name: "Kullad Chai", price: 50, category: "Chai Specials", description: "Tea served in traditional clay pots for an earthy aroma." },
-    { name: "Cutting Chai", price: 25, category: "Chai Specials", description: "Half-portion of strong milk tea, typical Mumbai style." },
+  const handleGoogleAdminLogin = async () => {
+    if (!restaurant) return;
+    setAuthError("");
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      const user = result.user;
 
-    // Starters
-    { name: "Paneer Tikka", price: 280, category: "Starters", description: "Cottage cheese cubes marinated in yogurt and spices, grilled in tandoor." },
-    { name: "Hara Bhara Kabab", price: 220, category: "Starters", description: "Deep-fried spinach and green pea patties." },
-    { name: "Chicken Tikka", price: 320, category: "Starters", description: "Boneless chicken marinated in tandoori spices and grilled." },
-    { name: "Vegetable Pakora", price: 150, category: "Starters", description: "Crispy assorted vegetable fritters." },
-    { name: "Fish Amritsari", price: 380, category: "Starters", description: "Deep-fried fish fillets marinated in gram flour and spices." },
-    { name: "Tandoori Soya Chaap", price: 260, category: "Starters", description: "Soya chunks marinated and roasted in clay oven." },
+      const restroRef = doc(db, "restaurants", slug as string);
+      const restroSnap = await getDoc(restroRef);
+      if (!restroSnap.exists()) {
+        setAuthError("Restaurant does not exist");
+        await signOut(auth);
+        return;
+      }
 
-    // Main Course (Veg)
-    { name: "Dal Makhani", price: 240, category: "Main Course (Veg)", description: "Black lentils slow-cooked with cream, butter, and tomatoes." },
-    { name: "Paneer Butter Masala", price: 290, category: "Main Course (Veg)", description: "Paneer cubes in a rich and creamy tomato-based gravy." },
-    { name: "Aloo Gobhi", price: 190, category: "Main Course (Veg)", description: "Spiced cauliflower and potato stir-fry." },
-    { name: "Mixed Vegetable Curry", price: 210, category: "Main Course (Veg)", description: "Fresh seasonal vegetables in a traditional onion-tomato gravy." },
-    { name: "Baingan Bharta", price: 200, category: "Main Course (Veg)", description: "Smoky roasted eggplant mash with spices." },
-    { name: "Malai Kofta", price: 280, category: "Main Course (Veg)", description: "Fried potato-paneer balls in a rich white gravy." },
-
-    // Main Course (Non-Veg)
-    { name: "Butter Chicken", price: 380, category: "Main Course (Non-Veg)", description: "Tender chicken in a velvety tomato and butter sauce." },
-    { name: "Mutton Rogan Josh", price: 450, category: "Main Course (Non-Veg)", description: "Classic Kashmiri lamb curry cooked with aromatic spices." },
-    { name: "Chicken Curry", price: 320, category: "Main Course (Non-Veg)", description: "Traditional homestyle chicken curry." },
-    { name: "Fish Curry", price: 360, category: "Main Course (Non-Veg)", description: "Tangy coastal-style fish curry with coconut milk." },
-    { name: "Egg Curry", price: 180, category: "Main Course (Non-Veg)", description: "Boiled eggs in a spicy onion-tomato gravy." },
-
-    // Breads
-    { name: "Butter Naan", price: 50, category: "Breads", description: "Soft leavened bread glazed with butter." },
-    { name: "Garlic Naan", price: 60, category: "Breads", description: "Leavened bread topped with minced garlic and butter." },
-    { name: "Tandoori Roti", price: 30, category: "Breads", description: "Whole wheat bread baked in a clay oven." },
-    { name: "Lacha Paratha", price: 55, category: "Breads", description: "Multi-layered whole wheat bread." },
-    { name: "Rumali Roti", price: 45, category: "Breads", description: "Paper-thin soft bread." },
-
-    // Rice & Biryani
-    { name: "Chicken Biryani", price: 350, category: "Rice & Biryani", description: "Fragrant basmati rice layered with spiced chicken and herbs." },
-    { name: "Veg Pulao", price: 220, category: "Rice & Biryani", description: "Basmati rice cooked with seasonal vegetables and mild spices." },
-    { name: "Steamed Rice", price: 120, category: "Rice & Biryani", description: "Plain long-grain basmati rice." },
-    { name: "Jeera Rice", price: 150, category: "Rice & Biryani", description: "Aromatic basmati rice tempered with cumin seeds." },
-    { name: "Mutton Biryani", price: 480, category: "Rice & Biryani", description: "Slow-cooked rice with tender lamb and spices." },
-
-    // Fast Food
-    { name: "Samosa (2 pcs)", price: 40, category: "Fast Food", description: "Classic crispy pastry with spiced potato filling." },
-    { name: "Vada Pav", price: 30, category: "Fast Food", description: "The iconic Mumbai burger - potato fritter in a bun." },
-    { name: "Chole Bhature", price: 180, category: "Fast Food", description: "Spiced chickpeas served with large fried bread." },
-    { name: "Pav Bhaji", price: 160, category: "Fast Food", description: "Mashed vegetable curry served with buttered buns." },
-
-    // Desserts
-    { name: "Gulab Jamun", price: 120, category: "Desserts", description: "Golden fried milk balls soaked in saffron sugar syrup." },
-    { name: "Gajar Ka Halwa", price: 150, category: "Desserts", description: "Traditional carrot pudding with nuts and milk." },
-    { name: "Rasmalai", price: 140, category: "Desserts", description: "Soft paneer discs in sweetened thickened milk." },
-    { name: "Kheer", price: 100, category: "Desserts", description: "Traditional rice pudding with cardamom and dry fruits." },
-
-    // Beverages
-    { name: "Mango Lassi", price: 90, category: "Beverages", description: "Refreshing yogurt-based drink with mango pulp." },
-    { name: "Sweet Lassi", price: 80, category: "Beverages", description: "Creamy churned yogurt drink." },
-    { name: "Cold Coffee", price: 110, category: "Beverages", description: "Chilled coffee blended with milk and ice cream." },
-    { name: "Nimbu Pani", price: 50, category: "Beverages", description: "Refreshing Indian lemonade." },
-    { name: "Fresh Lime Soda", price: 70, category: "Beverages", description: "Bubbly lime drink with salt or sugar." }
-  ];
+      const data = restroSnap.data();
+      if (data.adminUid === user.uid || data.adminEmail === user.email) {
+        setIsAdminAuthenticated(true);
+        sessionStorage.setItem(`dinebyte_auth_${slug}`, "true");
+        setAuthError("");
+      } else {
+        setAuthError("This Google account is not associated with this restaurant");
+        await signOut(auth);
+      }
+    } catch (err: any) {
+      console.error(err);
+      setAuthError("Google Authentication failed");
+    }
+  };
 
   const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -353,11 +420,19 @@ export default function AdminPage() {
     try {
       await addDoc(collection(db, "restaurants", slug as string, "menu"), {
         ...newItem,
+        ingredients: newItem.ingredients || [],
         isAvailable: true,
         createdAt: new Date(),
       });
       setIsAddingItem(false);
-      setNewItem({ name: "", description: "", price: 0, category: "Chai Specials" });
+      setNewItem({ 
+        name: "", 
+        description: "", 
+        price: 0, 
+        category: "Main Course (Veg)",
+        type: "veg",
+        ingredients: []
+      });
       setAddItemSuccess("Item added successfully!");
       setTimeout(() => setAddItemSuccess(""), 3000);
     } catch (e) {
@@ -373,7 +448,8 @@ export default function AdminPage() {
         name: editingItem.name,
         description: editingItem.description,
         price: editingItem.price,
-        category: editingItem.category
+        category: editingItem.category,
+        ingredients: editingItem.ingredients || []
       });
       setEditingItem(null);
       alert("Item updated successfully!");
@@ -410,7 +486,11 @@ export default function AdminPage() {
     if (!slug) return;
     setIsSavingSettings(true);
     try {
-      await setDoc(doc(db, "restaurants", slug as string, "settings", "config"), { upiId }, { merge: true });
+      await setDoc(doc(db, "restaurants", slug as string, "settings", "config"), { 
+        upiId,
+        currency,
+        timezone
+      }, { merge: true });
       alert("Settings saved successfully!");
     } catch (e) {
       console.error("Error saving settings:", e);
@@ -419,16 +499,165 @@ export default function AdminPage() {
     setIsSavingSettings(false);
   };
 
+  const handleAddInventory = async () => {
+    if (!slug || !newInventoryItem.name) return;
+    try {
+      await addDoc(collection(db, "restaurants", slug as string, "inventory"), {
+        ...newInventoryItem,
+        lastUpdated: serverTimestamp()
+      });
+      setIsAddingInventory(false);
+      setNewInventoryItem({
+        name: "",
+        quantity: 0,
+        unit: "kg",
+        lowStockThreshold: 1,
+        category: "Vegetables"
+      });
+    } catch (e) { console.error(e); }
+  };
+
+  const handleUpdateStock = async (itemId: string, newQuantity: number) => {
+    if (!slug) return;
+    try {
+      await updateDoc(doc(db, "restaurants", slug as string, "inventory", itemId), {
+        quantity: newQuantity,
+        lastUpdated: serverTimestamp()
+      });
+    } catch (e) { console.error(e); }
+  };
+
+  const handleDeleteInventory = async (itemId: string) => {
+    if (!slug || !confirm("Delete this item?")) return;
+    try {
+      await deleteDoc(doc(db, "restaurants", slug as string, "inventory", itemId));
+    } catch (e) { console.error(e); }
+  };
+
   const updateOrderStatus = async (orderId: string, status: string) => {
     try {
       const orderRef = doc(db, "restaurants", slug as string, "orders", orderId);
       await updateDoc(orderRef, { orderStatus: status });
+      
       if (status === 'ready') {
         notificationManager?.playOrderReady();
+      }
+
+      // Automatic Stock Deduction when order is marked as delivered
+      if (status === 'delivered') {
+        const orderSnap = await getDoc(orderRef);
+        if (orderSnap.exists()) {
+          const orderData = orderSnap.data() as Order;
+          for (const item of orderData.items) {
+            // Fetch the latest menu item data to get ingredients
+            const menuQ = query(
+              collection(db, "restaurants", slug as string, "menu"),
+              where("name", "==", item.name),
+              limit(1)
+            );
+            const menuSnap = await getDocs(menuQ);
+            
+            if (!menuSnap.empty) {
+              const menuData = menuSnap.docs[0].data();
+              const ingredients = menuData.ingredients || [];
+              
+              for (const ingredient of ingredients) {
+                const inventoryRef = doc(db, "restaurants", slug as string, "inventory", ingredient.inventoryItemId);
+                const inventorySnap = await getDoc(inventoryRef);
+                
+                if (inventorySnap.exists()) {
+                  const currentQuantity = inventorySnap.data().quantity || 0;
+                  const deduction = ingredient.quantity * item.quantity;
+                  await updateDoc(inventoryRef, {
+                    quantity: Math.max(0, currentQuantity - deduction),
+                    lastUpdated: serverTimestamp()
+                  });
+                }
+              }
+            }
+          }
+        }
       }
     } catch (error) {
       console.error("Error updating order:", error);
     }
+  };
+
+  const handleWastage = async (itemId: string, quantity: number, reason: string) => {
+    if (!slug) return;
+    try {
+      const inventoryRef = doc(db, "restaurants", slug as string, "inventory", itemId);
+      const inventorySnap = await getDoc(inventoryRef);
+      
+      if (inventorySnap.exists()) {
+        const currentQuantity = inventorySnap.data().quantity || 0;
+        const itemName = inventorySnap.data().name;
+        
+        // Record wastage
+        await addDoc(collection(db, "restaurants", slug as string, "wastage"), {
+          inventoryItemId: itemId,
+          itemName,
+          quantity,
+          reason,
+          recordedAt: serverTimestamp(),
+          recordedBy: "Admin"
+        });
+        
+        // Deduct from inventory
+        await updateDoc(inventoryRef, {
+          quantity: Math.max(0, currentQuantity - quantity),
+          lastUpdated: serverTimestamp()
+        });
+        
+        alert(`Recorded ${quantity} units of wastage for ${itemName}`);
+      }
+    } catch (e) { console.error(e); }
+  };
+
+  const generateDailyReport = async () => {
+    if (!slug) return;
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      const ordersQ = query(
+        collection(db, "restaurants", slug as string, "orders"),
+        where("createdAt", ">=", today),
+        where("orderStatus", "==", "delivered")
+      );
+      const ordersSnap = await getDocs(ordersQ);
+      
+      const wastageQ = query(
+        collection(db, "restaurants", slug as string, "wastage"),
+        where("recordedAt", ">=", today)
+      );
+      const wastageSnap = await getDocs(wastageQ);
+      
+      let totalSales = 0;
+      let totalWastageValue = 0; // In a real app, you'd multiply quantity by cost price
+      
+      ordersSnap.forEach(doc => totalSales += doc.data().totalAmount);
+      
+      const report = {
+        date: today,
+        totalOrders: ordersSnap.size,
+        totalSales,
+        wastageCount: wastageSnap.size,
+        inventoryStatus: inventoryItems.map(item => ({
+          name: item.name,
+          quantity: item.quantity,
+          unit: item.unit
+        }))
+      };
+      
+      // Save report
+      await addDoc(collection(db, "restaurants", slug as string, "reports"), {
+        ...report,
+        createdAt: serverTimestamp()
+      });
+      
+      alert(`Daily Report Generated!\nTotal Sales: ${formatPrice(totalSales)}\nOrders: ${ordersSnap.size}`);
+    } catch (e) { console.error(e); }
   };
 
   const updatePaymentStatus = async (orderId: string, status: string) => {
@@ -448,19 +677,17 @@ export default function AdminPage() {
   };
 
   const filteredOrders = orders.filter(o => {
-    const matchesSearch = o.customerName.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                         o.id?.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    if (activeTab === 'live') return matchesSearch && !['delivered', 'cancelled'].includes(o.orderStatus);
-    if (activeTab === 'completed') return matchesSearch && o.orderStatus === 'delivered';
-    if (activeTab === 'history') {
+    const currentTab = new URLSearchParams(window.location.search).get('tab');
+    if (currentTab === 'live') return !['delivered', 'cancelled'].includes(o.orderStatus);
+    if (currentTab === 'completed') return o.orderStatus === 'delivered';
+    if (currentTab === 'history') {
       const orderDate = o.createdAt && typeof (o.createdAt as any).toDate === 'function' 
         ? (o.createdAt as any).toDate() 
         : (o.createdAt as any) instanceof Date ? o.createdAt : new Date();
       const twelveHoursAgo = new Date(Date.now() - 12 * 60 * 60 * 1000);
-      return matchesSearch && (o.orderStatus === 'delivered' || o.orderStatus === 'cancelled') && orderDate < twelveHoursAgo;
+      return (o.orderStatus === 'delivered' || o.orderStatus === 'cancelled') && orderDate < twelveHoursAgo;
     }
-    return matchesSearch && o.orderStatus === 'cancelled';
+    return o.orderStatus === 'cancelled';
   });
 
   const stats = {
@@ -479,6 +706,14 @@ export default function AdminPage() {
       return o.orderStatus === 'delivered' && orderDate.toDateString() === new Date().toDateString();
     }).length,
     averageWait: 12
+  };
+
+  const isActive = (tab: string) => {
+    const currentTab = new URLSearchParams(window.location.search).get('tab');
+    if (tab === 'dashboard') {
+      return !currentTab || currentTab === 'dashboard';
+    }
+    return currentTab === tab;
   };
 
   if (loading) return (
@@ -554,6 +789,21 @@ export default function AdminPage() {
             >
               ADMIN LOGIN <ArrowRight size={18} />
             </button>
+
+            <div className="relative flex items-center py-2">
+              <div className="grow border-t border-gray-100"></div>
+              <span className="shrink mx-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">OR</span>
+              <div className="grow border-t border-gray-100"></div>
+            </div>
+
+            <button 
+              type="button"
+              onClick={handleGoogleAdminLogin}
+              className="w-full bg-white border-2 border-gray-100 text-gray-700 py-4 rounded-2xl font-black text-xs tracking-widest hover:bg-gray-50 transition-all flex items-center justify-center gap-3"
+            >
+              <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
+              LOGIN WITH GOOGLE
+            </button>
             <p className="text-xs text-gray-500 mt-4">
               New here? <a href="/onboarding" className="text-blue-600 hover:underline">Activate your restaurant</a>
             </p>
@@ -571,348 +821,359 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
-      {/* Sidebar */}
-      <aside className="hidden lg:flex w-72 bg-gray-900 flex-col h-screen sticky top-0">
-        <div className="p-8">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center p-1 overflow-hidden">
-              <img src="/moclogo.png" alt="DineByte Logo" className="w-full h-full object-contain" />
-            </div>
-            <h1 className="text-xl font-black text-white leading-tight tracking-tight">DineByte</h1>
-          </div>
-          <p className="text-[10px] text-gray-500 font-black uppercase tracking-[0.2em] ml-1">Restaurant Management</p>
-        </div>
-
-          <nav className="flex-1 px-4 space-y-2 overflow-y-auto">
-            <p className="px-4 text-[10px] font-black text-gray-600 uppercase tracking-widest mb-2 mt-4">Main</p>
-            <button 
-              onClick={() => setActiveTab('dashboard')}
-              className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-xl font-black text-sm transition-all ${
-                activeTab === 'dashboard' ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/20' : 'text-gray-400 hover:bg-white/5 hover:text-white'
-              }`}
-              type="button"
-              title="Dashboard"
-              aria-label="Dashboard"
-            >
-              <LayoutDashboard size={20} /> DASHBOARD
-            </button>
-            <button 
-              onClick={() => setActiveTab('live')}
-              className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-xl font-black text-sm transition-all ${
-                activeTab === 'live' ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/20' : 'text-gray-400 hover:bg-white/5 hover:text-white'
-              }`}
-              type="button"
-              title="Live Orders"
-              aria-label="Live Orders"
-            >
-              <Activity size={20} /> LIVE ORDERS
-              <span className={`ml-auto px-2 py-0.5 rounded-lg text-[10px] font-black ${
-                activeTab === 'live' ? 'bg-white/20 text-white' : 'bg-orange-600/10 text-orange-600'
-              }`}>{stats.activeCount}</span>
-            </button>
-            <button 
-              onClick={() => setActiveTab('history')}
-              className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-xl font-black text-sm transition-all ${
-                activeTab === 'history' ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/20' : 'text-gray-400 hover:bg-white/5 hover:text-white'
-              }`}
-              type="button"
-              title="Order History"
-              aria-label="Order History"
-            >
-              <Clock size={20} /> ORDER HISTORY
-            </button>
-            
-            <p className="px-4 text-[10px] font-black text-gray-600 uppercase tracking-widest mb-2 mt-8">Operations</p>
-            <button 
-              onClick={() => router.push(`/${slug}/admin/tables`)}
-              className="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl font-black text-sm text-gray-400 hover:bg-white/5 hover:text-white transition-all"
-              type="button"
-              title="Table Mapping"
-              aria-label="Table Mapping"
-            >
-              <TableIcon size={20} /> TABLE MAPPING
-            </button>
-            <button 
-              onClick={() => setActiveTab('menu')}
-              className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-xl font-black text-sm transition-all ${
-                activeTab === 'menu' ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/20' : 'text-gray-400 hover:bg-white/5 hover:text-white'
-              }`}
-              type="button"
-              title="Menu Catalog"
-              aria-label="Menu Catalog"
-            >
-              <List size={20} /> MENU CATALOG
-            </button>
-
-            <p className="px-4 text-[10px] font-black text-gray-600 uppercase tracking-widest mb-2 mt-8">Reports & Billing</p>
-            <button 
-              onClick={() => router.push(`/${slug}/admin/sales-report`)}
-              className="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl font-black text-sm text-gray-400 hover:bg-white/5 hover:text-white transition-all"
-              type="button"
-              title="Sales Analytics"
-              aria-label="Sales Analytics"
-            >
-              <BarChart3 size={20} /> SALES ANALYTICS
-            </button>
-            <button 
-              onClick={() => router.push(`/${slug}/admin/invoices`)}
-              className="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl font-black text-sm text-gray-400 hover:bg-white/5 hover:text-white transition-all"
-              type="button"
-              title="Digital Bills"
-              aria-label="Digital Bills"
-            >
-              <CreditCard size={20} /> DIGITAL BILLS
-            </button>
-            <button 
-              onClick={() => router.push(`/${slug}/admin/invoice-settings`)}
-              className="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl font-black text-sm text-gray-400 hover:bg-white/5 hover:text-white transition-all"
-              type="button"
-              title="Billing Config"
-              aria-label="Billing Config"
-            >
-              <FileText size={20} /> BILLING CONFIG
-            </button>
-            <button 
-              onClick={() => router.push(`/${slug}/admin/analytics`)}
-              className="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl font-black text-sm text-gray-400 hover:bg-white/5 hover:text-white transition-all"
-              type="button"
-              title="Turnover Insights"
-              aria-label="Turnover Insights"
-            >
-              <Timer size={20} /> TURNOVER INSIGHTS
-            </button>
-
-            <p className="px-4 text-[10px] font-black text-gray-600 uppercase tracking-widest mb-2 mt-8">System</p>
-            <button 
-              onClick={() => setActiveTab('settings')}
-              className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-xl font-black text-sm transition-all ${
-                activeTab === 'settings' ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/20' : 'text-gray-400 hover:bg-white/5 hover:text-white'
-              }`}
-              type="button"
-              title="Settings"
-              aria-label="Settings"
-            >
-              <Settings2 size={20} /> SETTINGS
-            </button>
-          </nav>
-
-        <div className="p-4 mt-auto">
-          <div className="bg-white/5 p-4 rounded-2xl border border-white/5 mb-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-orange-600 rounded-xl flex items-center justify-center text-white font-black">SA</div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-black text-white truncate">Super Admin</p>
-                <p className="text-[10px] text-gray-500 font-bold truncate">Terminal 01</p>
-              </div>
-              <button 
-                onClick={handleLogout}
-                className="p-2 text-gray-500 hover:text-red-500 transition-colors flex items-center justify-center"
-                title="Logout"
-                type="button"
-                aria-label="Logout"
-              >
-                <LogOut size={18} />
-              </button>
-            </div>
-          </div>
-        </div>
-      </aside>
+    <div className="min-h-screen bg-gray-50 flex overflow-hidden">
+      <AdminSidebar />
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto">
-        <div className="p-8 lg:p-12 max-w-400 mx-auto">
+      <main className="flex-1 overflow-y-auto flex flex-col min-h-screen bg-gray-50/50">
+        <div className="p-6 lg:p-10 max-w-400 mx-auto flex-1 w-full">
           {/* Header */}
-          <header className="bg-white px-6 pt-12 pb-8 rounded-b-[3rem] shadow-sm mb-8 flex items-center justify-between">
-            <div>
-              <div className="p-4 text-center text-xs text-gray-500">
-                Need help from provider? Email{' '}
-                <a href="mailto:siddhant.anand17@gmail.com" className="underline">
-                  siddhant.anand17@gmail.com
-                </a>
+          <header className="bg-white/80 backdrop-blur-xl px-10 py-8 rounded-[3rem] shadow-[0_10px_40px_rgba(0,0,0,0.02)] mb-10 flex flex-col md:flex-row items-center justify-between border border-gray-100/50 group">
+            <div className="flex flex-col md:flex-row items-center gap-8 text-center md:text-left">
+              <div className="relative">
+                <div className="w-16 h-16 bg-linear-to-tr from-orange-600 to-orange-400 rounded-2xl flex items-center justify-center text-white font-black shadow-2xl shadow-orange-600/20 group-hover:scale-110 transition-transform duration-500">
+                  {restaurant?.name?.charAt(0).toUpperCase() || 'D'}
+                </div>
+                <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-green-500 border-4 border-white rounded-full animate-pulse" />
               </div>
-              <div className="flex items-center gap-6 text-xs text-gray-500">
-                <span className="flex items-center gap-2"><Calendar size={16} /> {format(new Date(), 'EEEE, MMM do')}</span>
-                <span className="w-1 h-1 bg-gray-300 rounded-full" />
-                <span className="flex items-center gap-2 text-green-500"><Activity size={16} /> System Online</span>
+              <div>
+                <div className="flex items-center gap-4 mb-2 justify-center md:justify-start">
+                  <h2 className="text-3xl font-black text-gray-900 tracking-tighter uppercase group-hover:text-orange-600 transition-colors">{restaurant?.name || 'Admin Panel'}</h2>
+                  <div className="flex items-center gap-2 px-3 py-1.5 bg-green-50 border border-green-100 rounded-xl">
+                    <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-ping" />
+                    <span className="text-[10px] text-green-600 font-black uppercase tracking-widest">Live Node</span>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center justify-center md:justify-start gap-6 text-[10px] text-gray-400 font-black uppercase tracking-[0.2em]">
+                  <span className="flex items-center gap-2.5 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100">
+                    <Calendar size={14} className="text-orange-500" /> {format(new Date(), 'EEEE, MMM do')}
+                  </span>
+                  <span className="flex items-center gap-2.5 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100">
+                    <Activity size={14} className="text-blue-500" /> System: Optimized
+                  </span>
+                  <span className="flex items-center gap-2.5 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100">
+                    <Timer size={14} className="text-purple-500" /> Latency: 24ms
+                  </span>
+                </div>
               </div>
             </div>
-            <div className="flex items-center gap-3">
-              <DarkToggle />
-              <a href="https://www.dinebyte.in" target="_blank" rel="noopener noreferrer" className="px-4 py-2 bg-orange-100 text-orange-600 rounded-xl font-black text-xs hover:bg-orange-200 transition-all" title="Visit DineByte">
-                🌐 dinebyte.in
-              </a>
+            
+            <div className="flex items-center gap-6 mt-8 md:mt-0">
+              <div className="flex items-center gap-3 bg-gray-50 p-2 rounded-2xl border border-gray-100">
+                <DarkToggle />
+                <div className="w-px h-6 bg-gray-200 mx-1" />
+                <a 
+                  href={`/${slug}/menu`} 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  className="p-3 bg-white text-gray-900 rounded-xl hover:bg-orange-600 hover:text-white transition-all shadow-sm border border-gray-100 group/nav" 
+                  title="View Public Menu"
+                >
+                  <Navigation size={20} className="group-hover/nav:rotate-12 transition-transform" />
+                </a>
+              </div>
+              <button 
+                onClick={() => window.print()}
+                className="hidden md:flex items-center gap-3 px-6 py-4 bg-gray-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-orange-600 transition-all shadow-2xl active:scale-95 group/print"
+              >
+                <FileText size={16} className="group-hover/print:scale-110 transition-transform" /> PRINT REPORT
+              </button>
             </div>
           </header>
 
           {/* Dashboard View */}
-          {activeTab === 'dashboard' && (
-            <div className="space-y-8">
+          {isActive('dashboard') && (
+            <div className="space-y-10">
               {/* Stats Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
-                <div className="bg-white p-8 rounded-4xl shadow-sm border border-gray-100 relative overflow-hidden group">
-                  <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform">
-                    <IndianRupee size={80} />
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-8">
+                <motion.div 
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.1 }}
+                  className="bg-white p-8 rounded-[2.5rem] shadow-[0_10px_40px_rgba(0,0,0,0.03)] border border-gray-100 relative overflow-hidden group hover:shadow-[0_20px_60px_rgba(0,0,0,0.06)] transition-all duration-500"
+                >
+                  <div className="absolute top-0 right-0 p-6 opacity-[0.03] group-hover:opacity-[0.08] group-hover:scale-110 transition-all duration-700 rotate-12">
+                    <IndianRupee size={120} />
                   </div>
-                  <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest mb-2">Today's Revenue</p>
-                  <p className="text-3xl font-black text-gray-900">{formatPrice(stats.revenue)}</p>
-                  <div className="mt-4 flex items-center gap-2 text-green-500 font-bold text-xs">
-                    <ArrowUpRight size={14} /> +12.5% from yesterday
+                  <div className="relative z-10">
+                    <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-500">
+                      <IndianRupee size={24} className="text-emerald-600" />
+                    </div>
+                    <p className="text-[10px] text-gray-400 font-black uppercase tracking-[0.2em] mb-2">Today's Revenue</p>
+                    <p className="text-4xl font-black text-gray-900 tracking-tighter">{formatPrice(stats.revenue)}</p>
+                    <div className="mt-6 flex items-center gap-2 text-emerald-500 font-black text-[10px] uppercase tracking-widest bg-emerald-50 w-fit px-3 py-1.5 rounded-lg">
+                      <ArrowUpRight size={14} /> +12.5% vs Last Week
+                    </div>
                   </div>
-                </div>
-                <div className="bg-white p-8 rounded-4xl shadow-sm border border-gray-100 relative overflow-hidden group">
-                  <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform">
-                    <ShoppingBag size={80} />
+                </motion.div>
+
+                <motion.div 
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.2 }}
+                  className="bg-white p-8 rounded-[2.5rem] shadow-[0_10px_40px_rgba(0,0,0,0.03)] border border-gray-100 relative overflow-hidden group hover:shadow-[0_20px_60px_rgba(0,0,0,0.06)] transition-all duration-500"
+                >
+                  <div className="absolute top-0 right-0 p-6 opacity-[0.03] group-hover:opacity-[0.08] group-hover:scale-110 transition-all duration-700 -rotate-12">
+                    <ShoppingBag size={120} />
                   </div>
-                  <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest mb-2">Active Orders</p>
-                  <p className="text-3xl font-black text-gray-900">{stats.activeCount}</p>
-                  <div className="mt-4 flex items-center gap-2 text-orange-500 font-bold text-xs">
-                    <Clock size={14} /> 4 orders in preparation
+                  <div className="relative z-10">
+                    <div className="w-12 h-12 bg-orange-50 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-500">
+                      <ShoppingBag size={24} className="text-orange-600" />
+                    </div>
+                    <p className="text-[10px] text-gray-400 font-black uppercase tracking-[0.2em] mb-2">Active Orders</p>
+                    <p className="text-4xl font-black text-gray-900 tracking-tighter">{stats.activeCount}</p>
+                    <div className="mt-6 flex items-center gap-2 text-orange-500 font-black text-[10px] uppercase tracking-widest bg-orange-50 w-fit px-3 py-1.5 rounded-lg">
+                      <Clock size={14} /> Live in Kitchen
+                    </div>
                   </div>
-                </div>
-                <div className="bg-white p-8 rounded-4xl shadow-sm border border-gray-100 relative overflow-hidden group">
-                  <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform">
-                    <CheckCircle2 size={80} />
+                </motion.div>
+
+                <motion.div 
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.3 }}
+                  className="bg-white p-8 rounded-[2.5rem] shadow-[0_10px_40px_rgba(0,0,0,0.03)] border border-gray-100 relative overflow-hidden group hover:shadow-[0_20px_60px_rgba(0,0,0,0.06)] transition-all duration-500"
+                >
+                  <div className="absolute top-0 right-0 p-6 opacity-[0.03] group-hover:opacity-[0.08] group-hover:scale-110 transition-all duration-700">
+                    <CheckCircle2 size={120} />
                   </div>
-                  <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest mb-2">Completed Today</p>
-                  <p className="text-3xl font-black text-gray-900">{stats.completedToday}</p>
-                  <div className="mt-4 flex items-center gap-2 text-blue-500 font-bold text-xs">
-                    <User size={14} /> 24 unique customers
+                  <div className="relative z-10">
+                    <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-500">
+                      <CheckCircle2 size={24} className="text-blue-600" />
+                    </div>
+                    <p className="text-[10px] text-gray-400 font-black uppercase tracking-[0.2em] mb-2">Delivered Today</p>
+                    <p className="text-4xl font-black text-gray-900 tracking-tighter">{stats.completedToday}</p>
+                    <div className="mt-6 flex items-center gap-2 text-blue-500 font-black text-[10px] uppercase tracking-widest bg-blue-50 w-fit px-3 py-1.5 rounded-lg">
+                      <User size={14} /> Happy Customers
+                    </div>
                   </div>
-                </div>
-                <div className="bg-orange-600 p-8 rounded-4xl shadow-xl shadow-orange-600/20 text-white relative overflow-hidden group">
-                  <div className="absolute top-0 right-0 p-4 opacity-20 group-hover:scale-110 transition-transform text-white">
-                    <TableIcon size={80} />
+                </motion.div>
+
+                <motion.div 
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.4 }}
+                  className="bg-gray-900 p-8 rounded-[2.5rem] shadow-2xl shadow-orange-600/20 text-white relative overflow-hidden group hover:scale-[1.02] transition-all duration-500"
+                >
+                  <div className="absolute -top-10 -right-10 p-4 opacity-20 group-hover:scale-125 transition-transform duration-700 text-white rotate-12">
+                    <TableIcon size={180} />
                   </div>
-                  <p className="text-[10px] text-white/60 font-black uppercase tracking-widest mb-2">Table Status</p>
-                  <p className="text-3xl font-black">85% Occupied</p>
-                  <button 
-                    onClick={() => router.push(`/${slug}/admin/tables`)}
-                    className="mt-4 flex items-center gap-2 bg-white/20 hover:bg-white/30 px-4 py-2 rounded-xl transition-all font-black text-[10px] uppercase tracking-widest"
-                    type="button"
-                    title="View Floor Plan"
-                    aria-label="View Floor Plan"
-                  >
-                    View Floor Plan <ArrowRight size={14} />
-                  </button>
-                </div>
+                  <div className="relative z-10 h-full flex flex-col justify-between">
+                    <div>
+                      <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center mb-6">
+                        <TableIcon size={24} className="text-orange-500" />
+                      </div>
+                      <p className="text-[10px] text-white/50 font-black uppercase tracking-[0.2em] mb-2">Occupancy Rate</p>
+                      <p className="text-4xl font-black tracking-tighter">85% <span className="text-lg text-orange-500 uppercase tracking-widest ml-1">Full</span></p>
+                    </div>
+                    <button 
+                      onClick={() => router.push(`/${slug}/admin/tables`)}
+                      className="mt-8 flex items-center justify-center gap-3 bg-orange-600 hover:bg-orange-500 px-6 py-4 rounded-2xl transition-all font-black text-[10px] uppercase tracking-[0.2em] shadow-xl group/btn"
+                      type="button"
+                    >
+                      MANAGE TABLES <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
+                    </button>
+                  </div>
+                </motion.div>
               </div>
 
-              {/* Quick Actions */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div className="bg-white p-8 rounded-4xl shadow-sm border border-gray-100">
-                  <h3 className="text-xl font-black text-gray-900 mb-6 flex items-center gap-3">
-                    <Navigation size={24} className="text-orange-600" /> RESTAURANT QR CODES
-                  </h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                    <div className="p-6 bg-gray-50 rounded-3xl flex flex-col items-center text-center">
-                      <div className="bg-white p-4 rounded-2xl shadow-sm mb-4">
-                        <QRCodeSVG 
-                          value={`${window.location.origin}/${slug}/auth`}
-                          size={120}
-                          level="H"
-                          includeMargin={true}
-                        />
-                      </div>
-                      <p className="font-black text-gray-900 text-sm mb-1">Main Entrance QR</p>
-                      <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Global Order Entry</p>
-                      <button 
-                        onClick={() => window.open(`${window.location.origin}/${slug}/auth`)}
-                        className="mt-4 text-[10px] font-black text-orange-600 hover:underline"
-                        type="button"
-                      >
-                        OPEN LINK
-                      </button>
-                    </div>
-                    <div className="absolute top-6 right-6 flex items-center gap-3">
-                      <DarkToggle />
-                      <button
-                        onClick={handleSeedMenu}
-                        className="px-3 py-2 bg-orange-600 text-white rounded-xl font-black text-sm"
-                        type="button"
-                        title="Seed Indian Basics"
-                        aria-label="Seed Indian Basics"
-                      >
-                        SEED INDIAN BASICS
-                      </button>
-                    </div>
-                    <div className="p-6 bg-gray-50 rounded-3xl flex flex-col items-center text-center">
-                      <div className="bg-white p-4 rounded-2xl shadow-sm mb-4">
-                        <QRCodeSVG 
-                          value={`${window.location.origin}/${slug}/menu`}
-                          size={120}
-                          level="H"
-                          includeMargin={true}
-                        />
-                      </div>
-                      <p className="font-black text-gray-900 text-sm mb-1">Direct Menu QR</p>
-                      <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Bypass Registration</p>
-                      <button 
-                        onClick={() => window.open(`${window.location.origin}/${slug}/menu`)}
-                        className="mt-4 text-[10px] font-black text-orange-600 hover:underline"
-                        type="button"
-                      >
-                        OPEN LINK
-                      </button>
-                    </div>
-                  </div>
-                  <p className="mt-6 p-4 bg-orange-50 rounded-2xl text-[10px] font-bold text-orange-600 leading-relaxed">
-                    Tip: For table-specific ordering, visit the <b>Table Mapping</b> section to generate individual QR codes for each table.
-                  </p>
-                </div>
-
-                <div className="bg-white p-8 rounded-4xl shadow-sm border border-gray-100">
-                  <h3 className="text-xl font-black text-gray-900 mb-6 flex items-center gap-3">
-                    <LayoutGrid size={24} className="text-orange-600" /> QUICK NAVIGATOR
-                  </h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <button onClick={() => router.push(`/auth`)} className="p-6 bg-gray-50 rounded-2xl text-left hover:bg-orange-50 transition-all group border border-transparent hover:border-orange-100" type="button" title="Global Auth">
-                      <p className="text-[10px] text-gray-400 font-black uppercase mb-1">Customer View</p>
-                      <p className="font-black text-gray-900 group-hover:text-orange-600 transition-colors">Global Auth</p>
-                    </button>
-                    <button onClick={() => router.push(`/${slug}/auth`)} className="p-6 bg-gray-50 rounded-2xl text-left hover:bg-orange-50 transition-all group border border-transparent hover:border-orange-100" type="button" title="QR Entrance">
-                      <p className="text-[10px] text-gray-400 font-black uppercase mb-1">Scanning View</p>
-                      <p className="font-black text-gray-900 group-hover:text-orange-600 transition-colors">QR Entrance</p>
-                    </button>
-                    <button onClick={() => router.push(`/${slug}/admin/tables`)} className="p-6 bg-gray-50 rounded-2xl text-left hover:bg-orange-50 transition-all group border border-transparent hover:border-orange-100" type="button" title="Table Mapping">
-                      <p className="text-[10px] text-gray-400 font-black uppercase mb-1">Management</p>
-                      <p className="font-black text-gray-900 group-hover:text-orange-600 transition-colors">Table Mapping</p>
-                    </button>
-                    <button onClick={() => router.push(`/${slug}/admin/sales-report`)} className="p-6 bg-gray-50 rounded-2xl text-left hover:bg-orange-50 transition-all group border border-transparent hover:border-orange-100" type="button" title="Sales Report">
-                      <p className="text-[10px] text-gray-400 font-black uppercase mb-1">Accounting</p>
-                      <p className="font-black text-gray-900 group-hover:text-orange-600 transition-colors">Sales Report</p>
-                    </button>
-                  </div>
-                </div>
-
-                <div className="bg-white p-8 rounded-4xl shadow-sm border border-gray-100">
-                  <div className="flex items-center justify-between mb-6">
-                    <h3 className="text-xl font-black text-gray-900 flex items-center gap-3">
-                      <Activity size={24} className="text-orange-600" /> RECENT TRANSMSISSIONS
-                    </h3>
-                    <button onClick={() => setActiveTab('live')} className="text-[10px] font-black text-orange-600 uppercase tracking-widest hover:underline" type="button" title="View All Orders">View All</button>
-                  </div>
-                  <div className="space-y-4">
-                    {orders.slice(0, 4).map(order => (
-                      <div key={order.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl">
-                        <div className="flex items-center gap-4">
-                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-xs ${order.type === 'dinein' ? 'bg-blue-100 text-blue-600' : 'bg-purple-100 text-purple-600'}`}>
-                            {order.type === 'dinein' ? `T${order.tableNumber}` : 'TW'}
+              {/* AI Business Insights Section - ULTRA PRO GLASSMORPHISM */}
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="relative p-0.5 rounded-[3rem] overflow-hidden group shadow-2xl"
+              >
+                {/* Animated Border Gradient */}
+                <div className="absolute inset-0 bg-linear-to-r from-indigo-500 via-purple-500 to-pink-500 animate-gradient-xy group-hover:scale-110 transition-transform duration-1000 opacity-70" />
+                
+                <div className="relative bg-gray-900/95 backdrop-blur-3xl p-10 md:p-14 rounded-[2.9rem] overflow-hidden">
+                  {/* Decorative Elements */}
+                  <div className="absolute -top-20 -right-20 w-80 h-80 bg-indigo-600/20 rounded-full blur-[100px] animate-pulse" />
+                  <div className="absolute -bottom-20 -left-20 w-80 h-80 bg-purple-600/20 rounded-full blur-[100px] animate-pulse delay-700" />
+                  
+                  <div className="relative z-10">
+                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-10">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-4 mb-6">
+                          <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center border border-white/10 shadow-2xl group-hover:rotate-12 transition-all duration-500">
+                            <BrainCircuit className="text-indigo-400" size={32} />
                           </div>
                           <div>
-                            <p className="font-black text-gray-900 text-sm">{order.customerName}</p>
-                            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{order.items.length} items • {formatPrice(order.totalAmount)}</p>
+                            <h3 className="text-3xl md:text-4xl font-black text-white tracking-tighter flex items-center gap-4">
+                              GEMINI AI <span className="bg-linear-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">INTELLIGENCE</span>
+                            </h3>
+                            <div className="flex items-center gap-3">
+                              <p className="text-gray-400 text-xs font-bold mt-1 uppercase tracking-[0.3em] flex items-center gap-2">
+                                <SparklesIcon size={14} className="text-yellow-400" /> BIHAR'S FIRST AI-POWERED RESTAURANT ENGINE
+                              </p>
+                              <span className="bg-orange-600/20 text-orange-500 text-[8px] font-black px-2 py-0.5 rounded-full border border-orange-500/20 tracking-[0.2em] uppercase">Coming Soon</span>
+                            </div>
                           </div>
                         </div>
-                        <span className={`text-[10px] font-black px-3 py-1 rounded-lg uppercase tracking-tighter ${
-                          order.orderStatus === 'received' ? 'bg-amber-100 text-amber-600' : 
-                          order.orderStatus === 'preparing' ? 'bg-orange-100 text-orange-600' :
-                          order.orderStatus === 'ready' ? 'bg-blue-100 text-blue-600' : 'bg-green-100 text-green-600'
-                        }`}>
-                          {order.orderStatus}
-                        </span>
+                        <p className="text-gray-300 text-lg font-medium leading-relaxed max-w-2xl">
+                          Harness the power of Google's advanced neural networks to analyze your restaurant's data in real-time. 
+                          Get instant recommendations on menu pricing, peak hour management, and customer satisfaction.
+                        </p>
                       </div>
-                    ))}
+                      
+                      <button 
+                        onClick={fetchAiInsights}
+                        disabled={isAiLoading}
+                        className="relative group/ai-btn overflow-hidden px-10 py-6 bg-white text-gray-900 rounded-4xl font-black text-xs uppercase tracking-[0.2em] shadow-[0_20px_50px_rgba(255,255,255,0.1)] hover:shadow-white/20 transition-all duration-500 disabled:opacity-50 active:scale-95 shrink-0"
+                      >
+                        <div className="absolute inset-0 bg-linear-to-r from-indigo-500 to-purple-600 opacity-0 group-hover/ai-btn:opacity-10 transition-opacity" />
+                        <span className="relative flex items-center gap-4">
+                          {isAiLoading ? <Loader2 className="animate-spin" size={20} /> : <TrendingUp size={20} className="text-indigo-600" />}
+                          {aiInsights ? 'REFRESH ANALYTICS' : 'GENERATE INSIGHTS'}
+                        </span>
+                      </button>
+                    </div>
+
+                    <AnimatePresence mode="wait">
+                      {aiInsights ? (
+                        <motion.div 
+                          initial={{ opacity: 0, y: 30 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -30 }}
+                          className="mt-12 bg-white/5 backdrop-blur-2xl rounded-[2.5rem] p-10 border border-white/10 shadow-inner group/insight"
+                        >
+                          <div className="prose prose-invert max-w-none">
+                            <div className="text-white space-y-6 font-bold leading-relaxed whitespace-pre-wrap text-lg md:text-xl">
+                              {aiInsights.split('\n').map((line, i) => (
+                                <p key={i} className={line.startsWith('*') ? 'text-indigo-300 flex items-start gap-3' : 'text-gray-200'}>
+                                  {line.startsWith('*') && <span className="w-2 h-2 bg-indigo-500 rounded-full mt-2 shrink-0" />}
+                                  {line.replace(/\*/g, '')}
+                                </p>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="mt-12 pt-8 border-t border-white/5 flex flex-wrap items-center gap-6">
+                            <div className="flex items-center gap-3 text-[10px] font-black text-indigo-300 uppercase tracking-[0.3em]">
+                              <div className="w-2 h-2 bg-indigo-500 rounded-full animate-ping" /> ENGINE: GEMINI-1.5-FLASH
+                            </div>
+                            <div className="flex items-center gap-3 text-[10px] font-black text-emerald-400 uppercase tracking-[0.3em]">
+                              <Check size={14} /> STATUS: OPTIMIZED
+                            </div>
+                          </div>
+                        </motion.div>
+                      ) : !isAiLoading && (
+                        <motion.div 
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          className="mt-12 text-center py-16 border-2 border-dashed border-white/5 rounded-[3rem] group/empty hover:border-white/10 transition-all"
+                        >
+                          <div className="w-24 h-24 bg-white/5 rounded-[2.5rem] flex items-center justify-center mx-auto mb-8 group-hover/empty:scale-110 transition-transform duration-500 group-hover/empty:bg-white/10">
+                            <BrainCircuit className="text-white/20" size={48} />
+                          </div>
+                          <p className="text-gray-400 font-bold text-lg max-w-md mx-auto leading-relaxed">
+                            Data processing unit ready. <br />
+                            <span className="text-white">Run analytics to unlock business potential.</span>
+                          </p>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                </div>
+              </motion.div>
+
+              {/* Quick Actions & Recent Transmissions */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+                <div className="bg-white p-10 rounded-[3rem] shadow-[0_10px_40px_rgba(0,0,0,0.03)] border border-gray-100">
+                  <h3 className="text-2xl font-black text-gray-900 mb-8 flex items-center gap-4">
+                    <div className="w-10 h-10 bg-orange-50 rounded-xl flex items-center justify-center">
+                      <Navigation size={20} className="text-orange-600" />
+                    </div>
+                    QR TERMINAL
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
+                    <div className="p-8 bg-gray-50/50 rounded-[2.5rem] flex flex-col items-center text-center group hover:bg-white hover:shadow-xl transition-all duration-500 border border-transparent hover:border-orange-100">
+                      <div className="bg-white p-6 rounded-3xl shadow-sm mb-6 group-hover:scale-110 transition-transform duration-500">
+                        <QRCodeSVG 
+                          value={`${window.location.origin}/${slug}/auth`}
+                          size={140}
+                          level="H"
+                          includeMargin={true}
+                        />
+                      </div>
+                      <p className="font-black text-gray-900 text-lg mb-2">Main Gate QR</p>
+                      <p className="text-[10px] text-gray-400 font-black uppercase tracking-[0.2em] mb-6">Customer Onboarding</p>
+                      <button 
+                        onClick={() => window.open(`${window.location.origin}/${slug}/auth`)}
+                        className="w-full py-4 bg-gray-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-orange-600 transition-all shadow-lg active:scale-95"
+                      >
+                        TEST LINK
+                      </button>
+                    </div>
+                    <div className="p-8 bg-gray-50/50 rounded-[2.5rem] flex flex-col items-center text-center group hover:bg-white hover:shadow-xl transition-all duration-500 border border-transparent hover:border-orange-100">
+                      <div className="bg-white p-6 rounded-3xl shadow-sm mb-6 group-hover:scale-110 transition-transform duration-500">
+                        <QRCodeSVG 
+                          value={`${window.location.origin}/${slug}/menu`}
+                          size={140}
+                          level="H"
+                          includeMargin={true}
+                        />
+                      </div>
+                      <p className="font-black text-gray-900 text-lg mb-2">Direct Menu</p>
+                      <p className="text-[10px] text-gray-400 font-black uppercase tracking-[0.2em] mb-6">Quick View Mode</p>
+                      <button 
+                        onClick={() => window.open(`${window.location.origin}/${slug}/menu`)}
+                        className="w-full py-4 bg-gray-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-orange-600 transition-all shadow-lg active:scale-95"
+                      >
+                        TEST LINK
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white p-10 rounded-[3rem] shadow-[0_10px_40px_rgba(0,0,0,0.03)] border border-gray-100 flex flex-col">
+                  <div className="flex items-center justify-between mb-8">
+                    <h3 className="text-2xl font-black text-gray-900 flex items-center gap-4">
+                      <div className="w-10 h-10 bg-orange-50 rounded-xl flex items-center justify-center">
+                        <Activity size={20} className="text-orange-600" />
+                      </div>
+                      TRANSMISSIONS
+                    </h3>
+                    <button 
+                      onClick={() => handleTabChange('live')} 
+                      className="text-[10px] font-black text-orange-600 uppercase tracking-[0.2em] hover:bg-orange-50 px-4 py-2 rounded-xl transition-all"
+                    >
+                      VIEW ALL
+                    </button>
+                  </div>
+                  <div className="space-y-4 flex-1">
+                    {orders.length === 0 ? (
+                      <div className="h-full flex flex-col items-center justify-center py-10 opacity-20">
+                        <ShoppingBag size={48} className="mb-4" />
+                        <p className="font-black text-xs uppercase tracking-widest">No active traffic</p>
+                      </div>
+                    ) : (
+                      orders.slice(0, 5).map(order => (
+                        <motion.div 
+                          key={order.id} 
+                          initial={{ opacity: 0, x: 20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          className="flex items-center justify-between p-5 bg-gray-50/50 rounded-2xl group hover:bg-white hover:shadow-lg transition-all border border-transparent hover:border-gray-100"
+                        >
+                          <div className="flex items-center gap-5">
+                            <div className={`w-14 h-14 rounded-2xl flex flex-col items-center justify-center font-black shadow-sm group-hover:scale-110 transition-transform ${order.type === 'dinein' ? 'bg-blue-600 text-white' : 'bg-purple-600 text-white'}`}>
+                              <span className="text-[10px] uppercase opacity-60 font-bold">{order.type === 'dinein' ? 'T' : 'TW'}</span>
+                              <span className="text-lg leading-none mt-1">{order.type === 'dinein' ? order.tableNumber : '•'}</span>
+                            </div>
+                            <div>
+                              <p className="font-black text-gray-900 text-base">{order.customerName}</p>
+                              <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest mt-1">{order.items.length} Items • {formatPrice(order.totalAmount)}</p>
+                            </div>
+                          </div>
+                          <span className={`text-[10px] font-black px-4 py-2 rounded-xl uppercase tracking-widest border ${
+                            order.orderStatus === 'received' ? 'bg-amber-50 text-amber-600 border-amber-100' : 
+                            order.orderStatus === 'preparing' ? 'bg-orange-50 text-orange-600 border-orange-100 animate-pulse' :
+                            order.orderStatus === 'ready' ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-green-50 text-green-600 border-green-100'
+                          }`}>
+                            {order.orderStatus}
+                          </span>
+                        </motion.div>
+                      ))
+                    )}
                   </div>
                 </div>
               </div>
@@ -920,170 +1181,448 @@ export default function AdminPage() {
           )}
 
           {/* Live Orders View */}
-          {(activeTab === 'live' || activeTab === 'completed' || activeTab === 'history') && (
-            <div className="space-y-8">
-              <div className="flex items-center gap-2 bg-white p-2 rounded-2xl shadow-sm border border-gray-100 w-fit">
-                <button 
-                  onClick={() => setViewMode('grid')}
-                  className={`p-3 rounded-xl transition-all ${viewMode === 'grid' ? 'bg-orange-600 text-white shadow-md' : 'text-gray-400 hover:bg-gray-50'}`}
-                  title="Grid View"
-                  type="button"
-                  aria-label="Grid View"
-                >
-                  <LayoutGrid size={20} />
-                </button>
-                <button 
-                  onClick={() => setViewMode('list')}
-                  className={`p-3 rounded-xl transition-all ${viewMode === 'list' ? 'bg-orange-600 text-white shadow-md' : 'text-gray-400 hover:bg-gray-50'}`}
-                  title="List View"
-                  type="button"
-                  aria-label="List View"
-                >
-                  <List size={20} />
-                </button>
+          {(isActive('live') || isActive('completed') || isActive('history')) && (
+            <div className="space-y-10">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+                <div>
+                  <h3 className="text-3xl font-black text-gray-900 tracking-tighter uppercase mb-1">
+                    {isActive('live') ? 'Live Transmissions' : isActive('completed') ? 'Success Logs' : 'Archived Orders'}
+                  </h3>
+                  <p className="text-[10px] text-gray-400 font-black uppercase tracking-[0.3em]">
+                    Real-time monitoring and order management
+                  </p>
+                </div>
+                <div className="flex items-center gap-3 bg-white p-2 rounded-2xl shadow-sm border border-gray-100 w-fit">
+                  <button 
+                    onClick={() => setViewMode('grid')}
+                    className={`p-3 rounded-xl transition-all duration-300 ${viewMode === 'grid' ? 'bg-orange-600 text-white shadow-lg' : 'text-gray-400 hover:bg-gray-50'}`}
+                    title="Grid View"
+                  >
+                    <LayoutGrid size={20} />
+                  </button>
+                  <button 
+                    onClick={() => setViewMode('list')}
+                    className={`p-3 rounded-xl transition-all duration-300 ${viewMode === 'list' ? 'bg-orange-600 text-white shadow-lg' : 'text-gray-400 hover:bg-gray-50'}`}
+                    title="List View"
+                  >
+                    <List size={20} />
+                  </button>
+                </div>
               </div>
 
               {filteredOrders.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-40 text-gray-300">
-                  <div className="w-20 h-20 bg-gray-100 rounded-[2.5rem] flex items-center justify-center mb-6 opacity-50">
-                    <ShoppingBag size={40} />
+                <motion.div 
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="flex flex-col items-center justify-center py-40 bg-white rounded-[3rem] border-2 border-dashed border-gray-100"
+                >
+                  <div className="w-24 h-24 bg-gray-50 rounded-[2.5rem] flex items-center justify-center mb-8 opacity-40">
+                    <ShoppingBag size={48} className="text-gray-400" />
                   </div>
-                  <p className="text-lg font-black text-gray-900 mb-1">No orders found</p>
-                  <p className="text-xs font-bold uppercase tracking-widest">Everything is up to date</p>
-                </div>
+                  <p className="text-xl font-black text-gray-900 mb-2">No active signals</p>
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.3em]">Everything is up to date in the cloud</p>
+                </motion.div>
               ) : (
-                <div className={`grid gap-6 ${viewMode === 'grid' ? 'grid-cols-1 md:grid-cols-2 2xl:grid-cols-3' : 'grid-cols-1'}`}>
+                <div className={`grid gap-8 ${viewMode === 'grid' ? 'grid-cols-1 md:grid-cols-2 2xl:grid-cols-3' : 'grid-cols-1'}`}>
                   {filteredOrders.map(order => (
-                    <div 
+                    <motion.div 
+                      layout
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
                       key={order.id} 
-                      className={`bg-white rounded-4xl shadow-sm border overflow-hidden flex flex-col group hover:shadow-2xl hover:shadow-orange-600/5 transition-all duration-500 ${
-                        viewMode === 'list' ? 'flex-row items-center p-6' : ''
-                      } ${isRecentPing(order) ? 'border-orange-500 ring-4 ring-orange-100 animate-pulse' : 'border-gray-100'}`}
+                      className={`bg-white rounded-[2.5rem] shadow-[0_10px_40px_rgba(0,0,0,0.03)] border-2 overflow-hidden flex flex-col group hover:shadow-[0_25px_60px_rgba(0,0,0,0.08)] transition-all duration-500 ${
+                        viewMode === 'list' ? 'md:flex-row md:items-center' : ''
+                      } ${isRecentPing(order) ? 'border-orange-500 ring-8 ring-orange-50 animate-pulse' : 'border-gray-50'}`}
                     >
-                      {/* Card content preserved from original implementation */}
-                      <div className={`p-8 border-b border-gray-50 ${viewMode === 'list' ? 'border-none w-1/4' : ''}`}>
-                        <div className="flex items-start justify-between mb-6">
-                          <div>
-                            <div className="flex items-center gap-3 mb-2">
-                              {order.type === 'dinein' ? (
-                                <span className="bg-blue-100 text-blue-700 text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-xl flex items-center gap-2">
-                                  <TableIcon size={14} /> T-{order.tableNumber}
-                                </span>
-                              ) : (
-                                <span className="bg-purple-100 text-purple-700 text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-xl flex items-center gap-2">
-                                  <ShoppingBag size={14} /> TAKEAWAY
-                                </span>
-                              )}
-                              <span className="text-[10px] text-gray-400 font-black">#{order.id?.slice(-6).toUpperCase()}</span>
-                              {isRecentPing(order) && (
-                                <span className="bg-orange-600 text-white text-[10px] font-black uppercase px-2 py-1 rounded-lg flex items-center gap-1 animate-bounce">
-                                  <Bell size={10} /> PINGING!
-                                </span>
-                              )}
+                      {/* Order Header Info */}
+                      <div className={`p-10 ${viewMode === 'list' ? 'md:w-1/4' : 'border-b border-gray-50'}`}>
+                        <div className="flex flex-col gap-6">
+                          <div className="flex flex-wrap items-center gap-3">
+                            {order.type === 'dinein' ? (
+                              <span className="bg-blue-600 text-white text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-xl flex items-center gap-2.5 shadow-lg shadow-blue-600/20">
+                                <TableIcon size={14} /> TABLE {order.tableNumber}
+                              </span>
+                            ) : (
+                              <span className="bg-purple-600 text-white text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-xl flex items-center gap-2.5 shadow-lg shadow-purple-600/20">
+                                <ShoppingBag size={14} /> TAKEAWAY
+                              </span>
+                            )}
+                            <span className="text-[10px] text-gray-400 font-black tracking-widest bg-gray-50 px-3 py-2 rounded-lg border border-gray-100">#{order.id?.slice(-6).toUpperCase()}</span>
+                          </div>
+                          
+                          {isRecentPing(order) && (
+                            <div className="bg-orange-600 text-white text-[10px] font-black uppercase px-4 py-2 rounded-xl flex items-center gap-3 animate-bounce shadow-xl shadow-orange-600/30">
+                              <Bell size={14} /> CUSTOMER CALLING!
                             </div>
-                            <h3 className="text-2xl font-black text-gray-900 flex items-center gap-3">
-                              <User size={20} className="text-gray-300" /> {order.customerName}
+                          )}
+
+                          <div>
+                            <h3 className="text-2xl font-black text-gray-900 flex items-center gap-3 group-hover:text-orange-600 transition-colors">
+                              {order.customerName}
                             </h3>
-                            <p className="text-xs font-bold text-gray-400 mt-1 flex items-center gap-2">
-                              <Phone size={14} /> +{order.customerMobile}
+                            <p className="text-xs font-bold text-gray-400 mt-2 flex items-center gap-2 bg-gray-50 w-fit px-3 py-1.5 rounded-lg border border-gray-100">
+                              <Phone size={14} className="text-orange-500" /> +{order.customerMobile}
                             </p>
                           </div>
-                        </div>
-                        <div className="flex items-center justify-between text-gray-400 font-black text-[10px] uppercase tracking-widest">
-                          <span className="flex items-center gap-2"><Clock size={14} /> {order.createdAt ? format((order.createdAt as any).toDate(), 'hh:mm a') : 'Now'}</span>
-                          <span className="text-orange-600">{formatPrice(order.totalAmount + (order.taxAmount || 0))}</span>
+                          
+                          <div className="flex items-center justify-between pt-4 border-t border-gray-50">
+                            <span className="flex items-center gap-2 text-[10px] font-black text-gray-400 uppercase tracking-widest"><Clock size={14} /> {order.createdAt ? format((order.createdAt as any).toDate(), 'hh:mm a') : 'Now'}</span>
+                            <span className="text-lg font-black text-orange-600">{formatPrice(order.totalAmount + (order.taxAmount || 0))}</span>
+                          </div>
                         </div>
                       </div>
 
-                      <div className={`p-8 bg-gray-50/50 flex-1 ${viewMode === 'list' ? 'bg-transparent w-2/4' : ''}`}>
-                        <div className="space-y-4">
+                      {/* Items List */}
+                      <div className={`p-10 bg-gray-50/30 flex-1 border-x border-gray-50/50 ${viewMode === 'list' ? 'md:w-2/4' : ''}`}>
+                        <div className="space-y-5">
                           {order.items.map((item: OrderItem, idx: number) => (
-                            <div key={idx} className="flex justify-between items-center group/item">
+                            <div key={idx} className="flex justify-between items-start group/item bg-white p-4 rounded-2xl shadow-sm border border-gray-100 hover:border-orange-200 transition-all">
                               <div className="flex items-center gap-4">
-                                <span className="w-8 h-8 bg-white rounded-xl flex items-center justify-center text-xs font-black text-orange-600 shadow-sm">
+                                <span className="w-10 h-10 bg-orange-600 text-white rounded-xl flex items-center justify-center text-sm font-black shadow-lg shadow-orange-600/20">
                                   {item.quantity}
                                 </span>
                                 <div className="flex flex-col">
-                                  <span className="font-black text-gray-800 text-sm tracking-tight">{item.name}</span>
+                                  <span className="font-black text-gray-900 text-base leading-tight">{item.name}</span>
                                   {item.variantName && (
-                                    <span className="text-[10px] font-bold text-orange-500 uppercase tracking-widest">{item.variantName}</span>
+                                    <span className="text-[10px] font-black text-orange-500 uppercase tracking-[0.2em] mt-1">{item.variantName}</span>
                                   )}
                                 </div>
                               </div>
-                              <span className="text-xs font-black text-gray-400">{formatPrice(item.price * item.quantity)}</span>
+                              <span className="text-sm font-black text-gray-400 mt-1">{formatPrice(item.price * item.quantity)}</span>
                             </div>
                           ))}
                         </div>
                       </div>
 
-                      <div className={`p-8 bg-white border-t border-gray-50 flex flex-col gap-4 ${viewMode === 'list' ? 'border-none w-1/4' : ''}`}>
-                        <div className="flex items-center justify-between mb-2">
-                          <span className={`text-xs font-black uppercase tracking-tighter ${order.paymentStatus === 'paid' ? 'text-green-600' : 'text-amber-600'}`}>
-                            {order.paymentType} • {order.paymentStatus}
-                          </span>
-                          {order.paymentStatus !== 'paid' && activeTab === 'live' && (
+                      {/* Status & Actions */}
+                      <div className={`p-10 bg-white flex flex-col gap-6 ${viewMode === 'list' ? 'md:w-1/4' : ''}`}>
+                        <div className="flex items-center justify-between mb-2 p-4 bg-gray-50 rounded-2xl border border-gray-100">
+                          <div className="flex flex-col">
+                            <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Status</span>
+                            <span className={`text-[10px] font-black uppercase tracking-widest ${order.paymentStatus === 'paid' ? 'text-emerald-600' : 'text-amber-600'}`}>
+                              {order.paymentType} • {order.paymentStatus}
+                            </span>
+                          </div>
+                          {order.paymentStatus !== 'paid' && isActive('live') && (
                             <button 
                               onClick={() => updatePaymentStatus(order.id!, 'paid')} 
-                              className="text-[10px] font-black bg-blue-600 text-white px-3 py-2 rounded-xl active:scale-95 transition-all"
-                              type="button"
-                              title="Mark as Paid"
-                              aria-label="Mark as Paid"
+                              className="text-[9px] font-black bg-emerald-600 text-white px-4 py-2.5 rounded-xl active:scale-95 transition-all shadow-lg shadow-emerald-600/20"
                             >
                               MARK PAID
                             </button>
                           )}
                         </div>
 
-                        {activeTab === 'live' && (
-                          <>
+                        {isActive('live') && (
+                          <div className="flex flex-col gap-3">
                             {order.orderStatus === 'received' && (
                               <button 
                                 onClick={() => updateOrderStatus(order.id!, 'preparing')} 
-                                className="w-full bg-orange-600 text-white py-5 rounded-3xl font-black text-xs tracking-widest shadow-2xl shadow-orange-600/20 active:scale-95 transition-all flex items-center justify-center gap-3"
-                                type="button"
-                                title="Start Preparing"
-                                aria-label="Start Preparing"
+                                className="w-full bg-orange-600 text-white py-5 rounded-3xl font-black text-xs uppercase tracking-[0.2em] shadow-2xl shadow-orange-600/30 hover:bg-orange-500 active:scale-[0.98] transition-all flex items-center justify-center gap-4 group/btn"
                               >
-                                <ChefHat size={18} /> START PREPARING
+                                <ChefHat size={20} className="group-hover/btn:rotate-12 transition-transform" /> START COOKING
                               </button>
                             )}
                             {order.orderStatus === 'preparing' && (
                               <button 
                                 onClick={() => updateOrderStatus(order.id!, 'ready')} 
-                                className="w-full bg-blue-600 text-white py-5 rounded-3xl font-black text-xs tracking-widest shadow-2xl shadow-blue-600/20 active:scale-95 transition-all flex items-center justify-center gap-3"
-                                type="button"
-                                title="Mark as Ready"
-                                aria-label="Mark as Ready"
+                                className="w-full bg-blue-600 text-white py-5 rounded-3xl font-black text-xs uppercase tracking-[0.2em] shadow-2xl shadow-blue-600/30 hover:bg-blue-500 active:scale-[0.98] transition-all flex items-center justify-center gap-4 group/btn"
                               >
-                                <Bell size={18} /> MARK AS READY
+                                <Bell size={20} className="group-hover/btn:animate-swing transition-transform" /> READY FOR PICKUP
                               </button>
                             )}
                             {order.orderStatus === 'ready' && (
                               <button 
                                 onClick={() => updateOrderStatus(order.id!, 'delivered')} 
-                                className="w-full bg-green-600 text-white py-5 rounded-3xl font-black text-xs tracking-widest shadow-2xl shadow-green-600/20 active:scale-95 transition-all flex items-center justify-center gap-3"
-                                type="button"
-                                title="Mark Delivered"
-                                aria-label="Mark Delivered"
+                                className="w-full bg-emerald-600 text-white py-5 rounded-3xl font-black text-xs uppercase tracking-[0.2em] shadow-2xl shadow-emerald-600/30 hover:bg-emerald-500 active:scale-[0.98] transition-all flex items-center justify-center gap-4 group/btn"
                               >
-                                <CheckCircle2 size={18} /> MARK DELIVERED
+                                <CheckCircle2 size={20} className="group-hover/btn:scale-110 transition-transform" /> COMPLETE ORDER
                               </button>
                             )}
-                          </>
+                          </div>
                         )}
                         {['delivered', 'cancelled'].includes(order.orderStatus) && (
-                          <div className="w-full bg-gray-100 text-gray-400 py-5 rounded-3xl font-black text-xs tracking-widest text-center uppercase">Order {order.orderStatus}</div>
+                          <div className={`w-full py-5 rounded-3xl font-black text-[10px] uppercase tracking-[0.3em] text-center border-2 border-dashed ${
+                            order.orderStatus === 'delivered' ? 'bg-emerald-50/50 text-emerald-600 border-emerald-100' : 'bg-red-50/50 text-red-600 border-red-100'
+                          }`}>
+                            Order {order.orderStatus}
+                          </div>
                         )}
                       </div>
-                    </div>
+                    </motion.div>
                   ))}
                 </div>
               )}
             </div>
           )}
 
+          {/* Inventory Mgmt View */}
+          {isActive('inventory') && (
+            <div className="space-y-10">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+                <div>
+                  <h3 className="text-3xl font-black text-gray-900 tracking-tighter uppercase mb-1">Inventory Management</h3>
+                  <p className="text-[10px] text-gray-400 font-black uppercase tracking-[0.3em]">Real-time stock tracking and wastage monitoring</p>
+                </div>
+                <button 
+                  onClick={() => setIsAddingInventory(true)}
+                  className="bg-gray-900 text-white px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-2xl active:scale-95 transition-all flex items-center gap-3"
+                >
+                  <Plus size={18} /> ADD NEW ITEM
+                </button>
+              </div>
+
+              {/* Low Stock Alerts */}
+              {inventoryItems.some(item => item.quantity <= item.lowStockThreshold) && (
+                <div className="bg-red-50 border-2 border-red-100 p-6 rounded-[2.5rem] flex items-center gap-6 animate-pulse">
+                  <div className="w-12 h-12 bg-red-600 text-white rounded-2xl flex items-center justify-center shrink-0 shadow-lg shadow-red-600/20">
+                    <AlertCircle size={24} />
+                  </div>
+                  <div>
+                    <h4 className="font-black text-red-600 uppercase tracking-widest text-xs">CRITICAL STOCK ALERT</h4>
+                    <p className="text-red-900/60 text-sm font-bold">
+                      {inventoryItems.filter(item => item.quantity <= item.lowStockThreshold).length} items are running low. Please restock immediately.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 xl:grid-cols-3 gap-10">
+                {/* Inventory List */}
+                <div className="xl:col-span-2 space-y-6">
+                  <div className="bg-white rounded-[3rem] p-8 shadow-sm border border-gray-100">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left">
+                        <thead>
+                          <tr className="border-b border-gray-50">
+                            <th className="pb-6 text-[10px] font-black text-gray-400 uppercase tracking-widest">Item Name</th>
+                            <th className="pb-6 text-[10px] font-black text-gray-400 uppercase tracking-widest">Stock Level</th>
+                            <th className="pb-6 text-[10px] font-black text-gray-400 uppercase tracking-widest">Category</th>
+                            <th className="pb-6 text-[10px] font-black text-gray-400 uppercase tracking-widest">Status</th>
+                            <th className="pb-6 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                          {inventoryItems.map((item) => (
+                            <tr key={item.id} className="group">
+                              <td className="py-6 pr-4">
+                                <p className="font-black text-gray-900">{item.name}</p>
+                                <p className="text-[10px] text-gray-400 font-bold uppercase">Updated: {item.lastUpdated ? format((item.lastUpdated as any).toDate(), 'MMM d, HH:mm') : 'N/A'}</p>
+                              </td>
+                              <td className="py-6 pr-4">
+                                <div className="flex items-center gap-3">
+                                  <span className={`text-lg font-black ${item.quantity <= item.lowStockThreshold ? 'text-red-600' : 'text-gray-900'}`}>
+                                    {item.quantity} {item.unit}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="py-6 pr-4">
+                                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100">
+                                  {item.category}
+                                </span>
+                              </td>
+                              <td className="py-6 pr-4">
+                                {item.quantity <= 0 ? (
+                                  <span className="bg-red-50 text-red-600 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest">Out of Stock</span>
+                                ) : item.quantity <= item.lowStockThreshold ? (
+                                  <span className="bg-amber-50 text-amber-600 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest">Low Stock</span>
+                                ) : (
+                                  <span className="bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest">Healthy</span>
+                                )}
+                              </td>
+                              <td className="py-6 text-right">
+                                <div className="flex items-center justify-end gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button 
+                                    onClick={() => handleUpdateStock(item.id, item.quantity + 1)} 
+                                    className="p-2 text-gray-400 hover:text-emerald-600 transition-colors"
+                                    title="Increase Stock"
+                                  >
+                                    <Plus size={18} />
+                                  </button>
+                                  <button 
+                                    onClick={() => handleUpdateStock(item.id, Math.max(0, item.quantity - 1))} 
+                                    className="p-2 text-gray-400 hover:text-orange-600 transition-colors"
+                                    title="Decrease Stock"
+                                  >
+                                    <Minus size={18} />
+                                  </button>
+                                  <button 
+                                    onClick={() => handleDeleteInventory(item.id)} 
+                                    className="p-2 text-gray-400 hover:text-red-600 transition-colors"
+                                    title="Delete Inventory Item"
+                                  >
+                                    <Trash2 size={18} />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Quick Stats & Reports */}
+                <div className="space-y-10">
+                  <div className="bg-gray-900 rounded-[3rem] p-8 text-white shadow-2xl relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform duration-700">
+                      <SparklesIcon size={120} />
+                    </div>
+                    <div className="relative z-10">
+                      <h4 className="text-xl font-black uppercase tracking-widest mb-6">AI Predictions</h4>
+                      <p className="text-gray-400 text-sm font-bold leading-relaxed mb-8">
+                        Gemini is analyzing your stock usage patterns. Smart restocking suggestions will appear here.
+                      </p>
+                      <div className="flex items-center gap-3 text-[10px] font-black text-orange-500 uppercase tracking-widest">
+                        <div className="w-2 h-2 bg-orange-500 rounded-full animate-ping" />
+                        AI Analysis: Coming Soon
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-[3rem] p-8 shadow-sm border border-gray-100">
+                    <h4 className="text-xl font-black text-gray-900 mb-8 flex items-center gap-3">
+                      <div className="w-10 h-10 bg-orange-50 rounded-xl flex items-center justify-center text-orange-600"><FileText size={20} /></div>
+                      Daily Reports
+                    </h4>
+                    <div className="space-y-4">
+                      <button 
+                        onClick={generateDailyReport}
+                        className="w-full p-5 bg-gray-50 rounded-2xl flex items-center justify-between group hover:bg-orange-600 transition-all duration-300"
+                        title="Generate Daily Closing Stock Report"
+                      >
+                        <div className="text-left">
+                          <p className="font-black text-gray-900 group-hover:text-white transition-colors">Closing Stock</p>
+                          <p className="text-[10px] text-gray-400 font-bold uppercase group-hover:text-white/60">Generate EOD Report</p>
+                        </div>
+                        <ArrowRight size={20} className="text-gray-300 group-hover:text-white transition-all group-hover:translate-x-1" />
+                      </button>
+                      <button 
+                        onClick={() => {
+                          const itemId = prompt("Enter Inventory Item ID:");
+                          if (!itemId) return;
+                          const quantity = parseFloat(prompt("Enter Quantity to Mark as Wastage:") || "0");
+                          if (quantity <= 0) return;
+                          const reason = prompt("Enter Reason for Wastage (e.g., Expired, Spilled):") || "Unspecified";
+                          handleWastage(itemId, quantity, reason);
+                        }}
+                        className="w-full p-5 bg-gray-50 rounded-2xl flex items-center justify-between group hover:bg-red-600 transition-all duration-300"
+                        title="Record Wastage for an Item"
+                      >
+                        <div className="text-left">
+                          <p className="font-black text-gray-900 group-hover:text-white transition-colors">Wastage Logs</p>
+                          <p className="text-[10px] text-gray-400 font-bold uppercase group-hover:text-white/60">Track Spoilage</p>
+                        </div>
+                        <ArrowRight size={20} className="text-gray-300 group-hover:text-white transition-all group-hover:translate-x-1" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Add Inventory Modal */}
+              <AnimatePresence>
+                {isAddingInventory && (
+                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-6" onClick={() => setIsAddingInventory(false)}>
+                    <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-white rounded-[3rem] w-full max-w-lg p-10 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-between mb-8">
+                        <h3 className="text-2xl font-black text-gray-900 uppercase tracking-tighter">Add Inventory Item</h3>
+                        <button 
+                          onClick={() => setIsAddingInventory(false)} 
+                          className="p-2 hover:bg-gray-100 rounded-xl transition-colors"
+                          title="Close Modal"
+                        >
+                          <X size={24} className="text-gray-400" />
+                        </button>
+                      </div>
+                      
+                      <div className="space-y-6">
+                        <div className="space-y-2">
+                          <label htmlFor="item-name" className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Item Name</label>
+                          <input 
+                            id="item-name"
+                            type="text" 
+                            placeholder="e.g. Tomato, Milk, Basmati Rice" 
+                            value={newInventoryItem.name} 
+                            onChange={(e) => setNewInventoryItem({...newInventoryItem, name: e.target.value})} 
+                            className="w-full bg-gray-50 border-none rounded-2xl py-4 px-6 font-bold text-gray-900 outline-none" 
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-6">
+                          <div className="space-y-2">
+                            <label htmlFor="initial-stock" className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Initial Stock</label>
+                            <input 
+                              id="initial-stock"
+                              type="number" 
+                              value={newInventoryItem.quantity} 
+                              onChange={(e) => setNewInventoryItem({...newInventoryItem, quantity: parseInt(e.target.value) || 0})} 
+                              className="w-full bg-gray-50 border-none rounded-2xl py-4 px-6 font-bold text-gray-900 outline-none" 
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label htmlFor="unit-select" className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Unit</label>
+                            <select 
+                              id="unit-select"
+                              title="Select Unit"
+                              value={newInventoryItem.unit} 
+                              onChange={(e) => setNewInventoryItem({...newInventoryItem, unit: e.target.value})} 
+                              className="w-full bg-gray-50 border-none rounded-2xl py-4 px-6 font-bold text-gray-900 outline-none appearance-none"
+                            >
+                              <option value="kg">kg (Kilogram)</option>
+                              <option value="ltr">ltr (Liter)</option>
+                              <option value="pcs">pcs (Pieces)</option>
+                              <option value="gm">gm (Gram)</option>
+                              <option value="ml">ml (Milliliter)</option>
+                            </select>
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <label htmlFor="threshold" className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Low Stock Alert Threshold</label>
+                          <input 
+                            id="threshold"
+                            type="number" 
+                            value={newInventoryItem.lowStockThreshold} 
+                            onChange={(e) => setNewInventoryItem({...newInventoryItem, lowStockThreshold: parseInt(e.target.value) || 1})} 
+                            className="w-full bg-gray-50 border-none rounded-2xl py-4 px-6 font-bold text-gray-900 outline-none" 
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label htmlFor="category-select" className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Category</label>
+                          <select 
+                            id="category-select"
+                            title="Select Category"
+                            value={newInventoryItem.category} 
+                            onChange={(e) => setNewInventoryItem({...newInventoryItem, category: e.target.value})} 
+                            className="w-full bg-gray-50 border-none rounded-2xl py-4 px-6 font-bold text-gray-900 outline-none appearance-none"
+                          >
+                            <option value="Vegetables">Vegetables</option>
+                            <option value="Dairy">Dairy</option>
+                            <option value="Grains">Grains</option>
+                            <option value="Spices">Spices</option>
+                            <option value="Meat/Poultry">Meat/Poultry</option>
+                            <option value="Beverages">Beverages</option>
+                            <option value="Packaging">Packaging</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <button 
+                        onClick={handleAddInventory} 
+                        className="w-full mt-10 py-5 bg-orange-600 text-white rounded-3xl font-black text-xs uppercase tracking-widest shadow-2xl shadow-orange-600/20 active:scale-[0.98] transition-all"
+                        title="Confirm Addition"
+                      >
+                        CONFIRM ADDITION
+                      </button>
+                    </motion.div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
+
           {/* Menu Mgmt View */}
-          {activeTab === 'menu' && (
+          {isActive('menu') && (
             <div className="bg-white rounded-4xl p-8 shadow-sm border border-gray-100">
               <div className="flex items-center justify-between mb-8">
                 <h3 className="text-2xl font-black text-gray-900">Manage Menu</h3>
@@ -1159,23 +1698,77 @@ export default function AdminPage() {
               setEditingItem(null);
               setAddItemError("");
               setAddItemSuccess("");
+              setNewItem({ 
+                name: "", 
+                description: "", 
+                price: 0, 
+                category: "Main Course (Veg)",
+                type: "veg",
+                ingredients: []
+              });
             }}
             newItem={editingItem || newItem}
             setNewItem={editingItem ? setEditingItem : setNewItem}
             error={addItemError || editItemError}
             success={addItemSuccess}
+            inventoryItems={inventoryItems}
           />
 
           {/* Settings View */}
-          {activeTab === 'settings' && (
+          {isActive('settings') && (
             <div className="bg-white rounded-4xl p-8 shadow-sm border border-gray-100 max-w-2xl space-y-10">
               <h3 className="text-2xl font-black text-gray-900">System Configuration</h3>
               
               <div className="space-y-6 pb-10 border-b border-gray-100">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">UPI ID for Payments</label>
-                <div className="flex gap-2">
-                  <input value={upiId} onChange={e => setUpiId(e.target.value)} placeholder="yourname@upi" className="flex-1 bg-gray-50 border-none rounded-2xl py-4 px-6 font-bold text-gray-900" />
-                  <button onClick={handleSaveSettings} disabled={isSavingSettings} className="bg-orange-600 text-white px-8 rounded-2xl font-black text-xs flex items-center gap-2 hover:bg-orange-700 transition-all" type="button" title="Save Settings">{isSavingSettings ? <Loader2 className="animate-spin" /> : <Save size={18} />} SAVE</button>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Currency</label>
+                    <select 
+                      value={currency} 
+                      onChange={e => setCurrency(e.target.value)}
+                      className="w-full bg-gray-50 border-none rounded-2xl py-4 px-6 font-bold text-gray-900 outline-none"
+                      title="Select Currency"
+                    >
+                      <option value="INR">Indian Rupee (₹)</option>
+                      <option value="USD">US Dollar ($)</option>
+                      <option value="EUR">Euro (€)</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Timezone</label>
+                    <select 
+                      value={timezone} 
+                      onChange={e => setTimezone(e.target.value)}
+                      className="w-full bg-gray-50 border-none rounded-2xl py-4 px-6 font-bold text-gray-900 outline-none"
+                      title="Select Timezone"
+                    >
+                      <option value="Asia/Kolkata">Asia/Kolkata (IST)</option>
+                      <option value="UTC">UTC</option>
+                      <option value="America/New_York">America/New_York (EST)</option>
+                    </select>
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <label htmlFor="upi-id" className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">UPI ID for Payments</label>
+                  <div className="flex gap-2">
+                    <input 
+                      id="upi-id"
+                      value={upiId} 
+                      onChange={e => setUpiId(e.target.value)} 
+                      placeholder="yourname@upi" 
+                      className="flex-1 bg-gray-50 border-none rounded-2xl py-4 px-6 font-bold text-gray-900" 
+                    />
+                    <button 
+                      onClick={handleSaveSettings} 
+                      disabled={isSavingSettings} 
+                      className="bg-orange-600 text-white px-8 rounded-2xl font-black text-xs flex items-center gap-2 hover:bg-orange-700 transition-all" 
+                      type="button" 
+                      title="Save Settings"
+                    >
+                      {isSavingSettings ? <Loader2 className="animate-spin" /> : <Save size={18} />} SAVE
+                    </button>
+                  </div>
                 </div>
               </div>
 

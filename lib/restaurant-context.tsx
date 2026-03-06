@@ -3,7 +3,7 @@
  import { createContext, useContext, ReactNode, useEffect, useState } from "react";
  import { useParams, useRouter } from "next/navigation";
  import { db } from "./firebase/config";
- import { doc, onSnapshot } from "firebase/firestore";
+ import { doc, onSnapshot, collection, query, where } from "firebase/firestore";
  
  interface Restaurant {
    id: string;
@@ -18,6 +18,7 @@
  interface RestaurantContextType {
    restaurant: Restaurant | null;
    isLoading: boolean;
+   liveOrderCount: number;
  }
  
  const RestaurantContext = createContext<RestaurantContextType | undefined>(undefined);
@@ -27,6 +28,7 @@
   const router = useRouter();
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [liveOrderCount, setLiveOrderCount] = useState(0);
 
   const slugParam = params?.slug;
    const slug: string | undefined = Array.isArray(slugParam)
@@ -66,11 +68,24 @@
        setIsLoading(false);
      });
 
-     return () => unsub();
+     // Add live order count listener
+     const ordersQuery = query(
+       collection(db, "restaurants", slug, "orders"),
+       where("orderStatus", "not-in", ["delivered", "cancelled"])
+     );
+
+     const ordersUnsub = onSnapshot(ordersQuery, (snapshot) => {
+       setLiveOrderCount(snapshot.docs.length);
+     });
+
+     return () => {
+       unsub();
+       ordersUnsub();
+     };
    }, [slug]);
  
    return (
-     <RestaurantContext.Provider value={{ restaurant, isLoading }}>
+     <RestaurantContext.Provider value={{ restaurant, isLoading, liveOrderCount }}>
        {children}
      </RestaurantContext.Provider>
    );

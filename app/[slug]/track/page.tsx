@@ -11,6 +11,7 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { BellRing, CheckCircle, Receipt, ArrowLeft, Loader2, MapPin, Smartphone, Clock, ChefHat, CheckCircle2, ShoppingBag, Volume2, VolumeX, Bell } from "lucide-react";
 import { notificationManager } from "../../../lib/notification-manager";
+import { useRestaurant } from "../../../lib/restaurant-context";
 import { OrderItem } from "../../../types";
 
 function TrackContent() {
@@ -24,6 +25,19 @@ function TrackContent() {
   const [hasNotified, setHasNotified] = useState(false);
   const [notifSettings, setNotifSettings] = useState({ volume: 1.0, enabled: true });
   const [isPinging, setIsPinging] = useState(false);
+  const { restaurant } = useRestaurant();
+  const [invoiceSettings, setInvoiceSettings] = useState<any>(null);
+
+  useEffect(() => {
+    if (restaurant) {
+      const unsub = onSnapshot(doc(db, "restaurants", restaurant.id, "settings", "invoice"), (docSnap) => {
+        if (docSnap.exists()) {
+          setInvoiceSettings(docSnap.data());
+        }
+      });
+      return () => unsub();
+    }
+  }, [restaurant]);
 
   useEffect(() => {
     if (notificationManager) {
@@ -138,36 +152,60 @@ function TrackContent() {
     });
 
     // Styles
-    doc.setFontSize(12);
-    doc.text("MINISTRY OF CHAI", 40, 10, { align: "center" });
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.text(invoiceSettings?.shopName || restaurant?.name || "RESTAURANT", 40, 10, { align: "center" });
     doc.setFontSize(8);
-    doc.text("Old Rajendra Nagar, 110060 (New Delhi)", 40, 15, { align: "center" });
-    doc.text("Premium Tea & Snacks", 40, 18, { align: "center" });
+    doc.setFont("helvetica", "normal");
+    doc.text(invoiceSettings?.address || "Address details in settings", 40, 15, { align: "center" });
+    doc.text(`Contact: ${invoiceSettings?.contact || "N/A"}`, 40, 19, { align: "center" });
+    if (invoiceSettings?.gstin) {
+      doc.text(`GSTIN: ${invoiceSettings.gstin}`, 40, 23, { align: "center" });
+    }
     
-    doc.line(5, 22, 75, 22);
+    doc.line(5, 26, 75, 26);
     
-    doc.text(`Order: #${order.id?.slice(-6).toUpperCase()}`, 5, 28);
-    doc.text(`Date: ${new Date().toLocaleString()}`, 5, 32);
-    doc.text(`Customer: ${order.customerName}`, 5, 36);
-    doc.text(`Mobile: ${order.customerMobile}`, 5, 40);
+    doc.text(`Order: #${order.id?.slice(-6).toUpperCase()}`, 5, 32);
+    doc.text(`Date: ${new Date().toLocaleString()}`, 5, 36);
+    doc.text(`Customer: ${order.customerName}`, 5, 40);
+    doc.text(`Table: ${order.tableNumber || "Takeaway"}`, 5, 44);
     
     autoTable(doc, {
-      startY: 45,
+      startY: 48,
       margin: { left: 5, right: 5 },
-      styles: { fontSize: 7, cellPadding: 1 },
+      styles: { fontSize: 7, cellPadding: 1, font: "helvetica" },
       head: [['Item', 'Qty', 'Price']],
-      body: order.items.map((i: OrderItem) => [i.name, i.quantity, (i.price * i.quantity).toFixed(2)]),
+      body: order.items.map((i: OrderItem) => [
+        i.variantName ? `${i.name} (${i.variantName})` : i.name, 
+        i.quantity, 
+        (i.price * i.quantity).toFixed(2)
+      ]),
       theme: 'plain',
     });
 
     const finalY = (doc as any).lastAutoTable.finalY + 5;
-    doc.text(`Subtotal: ${formatPrice(order.totalAmount)}`, 75, finalY, { align: "right" });
-    doc.text(`Tax (5%): ${formatPrice(order.taxAmount)}`, 75, finalY + 4, { align: "right" });
+    const cgstRate = invoiceSettings?.cgst ?? 2.5;
+    const sgstRate = invoiceSettings?.sgst ?? 2.5;
+    const igstRate = invoiceSettings?.igst ?? 0;
+    const subtotal = order.totalAmount;
+    
+    const cgst = (subtotal * cgstRate) / 100;
+    const sgst = (subtotal * sgstRate) / 100;
+    const igst = (subtotal * igstRate) / 100;
+    const total = subtotal + cgst + sgst + igst;
+
+    doc.text(`Subtotal: ${formatPrice(subtotal)}`, 75, finalY, { align: "right" });
+    if (cgstRate > 0) doc.text(`CGST (${cgstRate}%): ${formatPrice(cgst)}`, 75, finalY + 4, { align: "right" });
+    if (sgstRate > 0) doc.text(`SGST (${sgstRate}%): ${formatPrice(sgst)}`, 75, finalY + 8, { align: "right" });
+    if (igstRate > 0) doc.text(`IGST (${igstRate}%): ${formatPrice(igst)}`, 75, finalY + 12, { align: "right" });
+    
     doc.setFontSize(10);
-    doc.text(`TOTAL: ${formatPrice(order.totalAmount + order.taxAmount)}`, 75, finalY + 10, { align: "right" });
+    doc.setFont("helvetica", "bold");
+    doc.text(`TOTAL: ${formatPrice(total)}`, 75, finalY + 18, { align: "right" });
     
     doc.setFontSize(8);
-    doc.text("Thank you for your order!", 40, finalY + 20, { align: "center" });
+    doc.setFont("helvetica", "normal");
+    doc.text("Thank you for dining with us!", 40, finalY + 25, { align: "center" });
     
     doc.save(`receipt-${order.id}.pdf`);
   };

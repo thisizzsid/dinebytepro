@@ -59,6 +59,38 @@ function MenuContent() {
   }, [restaurant, customer]);
 
   useEffect(() => {
+    if (!restaurant || !tableNumber) return;
+    
+    // Automatic table booking on scan is now handled in the auth flow 
+    // and confirmed here if table is somehow still available.
+    const verifyTableStatus = async () => {
+      try {
+        const tablesQ = query(
+          collection(db, "restaurants", restaurant.id, "tables"),
+          where("tableNumber", "==", tableNumber)
+        );
+        const tableSnapshot = await getDocs(tablesQ);
+        if (!tableSnapshot.empty) {
+          const tableDoc = tableSnapshot.docs[0];
+          const tableData = tableDoc.data();
+          if (tableData.isAvailable) {
+            await updateDoc(tableDoc.ref, {
+              isAvailable: false,
+              occupiedAt: serverTimestamp(),
+              currentPartySize: parseInt(partySize || "1")
+            });
+            console.log(`Table ${tableNumber} verified as occupied in menu`);
+          }
+        }
+      } catch (e) {
+        console.error("Error verifying table status on scan:", e);
+      }
+    };
+
+    verifyTableStatus();
+  }, [restaurant, tableNumber, partySize]);
+
+  useEffect(() => {
     if (!restaurant) return;
     
     console.log("Starting Menu Sync for restaurant:", restaurant.id);
@@ -115,30 +147,12 @@ function MenuContent() {
 
       const docRef = await addDoc(collection(db, "restaurants", restaurant.id, "orders"), orderData);
       
-      // Automatically lock table if it's a dine-in order
-      if (orderType === "dinein" && tableNumber) {
-        try {
-          const tablesQ = query(
-            collection(db, "restaurants", restaurant.id, "tables"),
-            where("tableNumber", "==", tableNumber)
-          );
-          const tableSnapshot = await getDocs(tablesQ);
-          if (!tableSnapshot.empty) {
-            const tableDoc = tableSnapshot.docs[0];
-            await updateDoc(tableDoc.ref, {
-              isAvailable: false,
-              occupiedAt: serverTimestamp(),
-              currentPartySize: parseInt(partySize || "1")
-            });
-          }
-        } catch (tableError) {
-          console.error("Error locking table:", tableError);
-        }
-      }
-
       clearCart();
       setShowFullCheckout(false);
       alert("Order placed successfully! Track it using the floating icon.");
+      
+      // Navigate to menu without table/party params to "empty all fields"
+      router.replace(`/${restaurant.slug}/menu`);
     } catch (error) {
       console.error("Error placing order:", error);
       alert("Failed to place order. Please try again.");

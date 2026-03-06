@@ -1,4 +1,4 @@
-import { OrderType, PaymentType, PaymentStatus, OrderStatus, OrderItem } from "./index";
+import { OrderType, PaymentType, PaymentStatus, OrderStatus, OrderItem, MenuItem } from "./index";
 import type { Timestamp } from "firebase/firestore";
 
 export interface Customer {
@@ -38,6 +38,10 @@ export interface Table {
   currentPartySize?: number;
   occupiedAt?: Timestamp;
   vacatedAt?: Timestamp;
+  qrText?: string;
+  wifiSpeed?: string;
+  x?: number;
+  y?: number;
 }
 
 export interface Reservation {
@@ -50,4 +54,36 @@ export interface Reservation {
   dateTime: Timestamp;
   partySize: number;
   createdAt: Timestamp;
+}
+
+export interface InventoryItem {
+  id?: string;
+  name: string;
+  quantity: number;
+  unit: string; // e.g., "kg", "ltr", "pcs", "gm"
+  lowStockThreshold: number;
+  category: string; // e.g., "Dairy", "Vegetables", "Spices"
+  lastUpdated: Timestamp;
+  expiryDate?: Timestamp;
+}
+
+export interface RecipeIngredient {
+  inventoryItemId: string;
+  name: string;
+  quantity: number; // Quantity needed per dish/item
+  unit: string;
+}
+
+export interface MenuItemWithInventory extends MenuItem {
+  ingredients: RecipeIngredient[];
+}
+
+export interface WastageRecord {
+  id?: string;
+  inventoryItemId: string;
+  itemName: string;
+  quantity: number;
+  reason: string; // e.g., "Expired", "Spilled", "Spoiled"
+  recordedAt: Timestamp;
+  recordedBy: string;
 }

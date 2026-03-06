@@ -22,6 +22,20 @@ export default function AuthPage() {
     partySize: 1,
   });
 
+  useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    const table = searchParams.get("table");
+    const party = searchParams.get("party");
+    
+    if (table || party) {
+      setFormData(prev => ({
+        ...prev,
+        tableNumber: table || prev.tableNumber,
+        partySize: party ? parseInt(party, 10) : prev.partySize,
+      }));
+    }
+  }, []);
+
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -70,6 +84,29 @@ export default function AuthPage() {
     
     setIsSubmitting(true);
     try {
+      // 1. Auto-mark table as occupied in Firestore immediately on onboarding
+      if (slug && formData.tableNumber) {
+        try {
+          const { collection, query, where, getDocs, updateDoc, serverTimestamp } = await import("firebase/firestore");
+          const tablesQ = query(
+            collection(db, "restaurants", slug, "tables"),
+            where("tableNumber", "==", formData.tableNumber)
+          );
+          const tableSnapshot = await getDocs(tablesQ);
+          if (!tableSnapshot.empty) {
+            const tableDoc = tableSnapshot.docs[0];
+            await updateDoc(tableDoc.ref, {
+              isAvailable: false,
+              occupiedAt: serverTimestamp(),
+              currentPartySize: formData.partySize
+            });
+            console.log(`Table ${formData.tableNumber} marked as occupied during onboarding`);
+          }
+        } catch (tableError) {
+          console.error("Error auto-occupying table:", tableError);
+        }
+      }
+
       const customerData = {
         name: formData.name,
         mobile: formData.phone,

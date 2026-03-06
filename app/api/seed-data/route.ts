@@ -29,11 +29,14 @@ export async function POST(req: Request) {
       await addDoc(menuCol, { ...item, isAvailable: true, createdAt: new Date() });
     }
 
-    // Seed tables
+    // Seed menu only if explicitly requested, but we'll remove table seeding to make it manual
+    // For now, let's keep the menu seed if they use the button, but remove table seeding
+    /*
     const tablesCol = collection(db, "restaurants", slug, "tables");
     for (const t of defaultTables) {
       await addDoc(tablesCol, { ...t, isAvailable: true, reserved: false, currentPartySize: 0 });
     }
+    */
 
     return NextResponse.json({ ok: true });
   } catch (err) {
