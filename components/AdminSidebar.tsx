@@ -105,12 +105,17 @@ export default function AdminSidebar({ activeTab }: AdminSidebarProps) {
     <div className="flex flex-col h-full">
       <div className="p-8">
         <Link href={`/${slug}/admin`} className="flex items-center gap-4 mb-2 group cursor-pointer">
-          <div className="w-14 h-14 bg-white rounded-2xl flex items-center justify-center p-1.5 overflow-hidden shadow-2xl shadow-orange-600/20 rotate-3 group-hover:rotate-0 transition-all duration-500 border-2 border-orange-50/10">
+          <div className="w-14 h-14 bg-white rounded-2xl flex items-center justify-center p-1.5 overflow-hidden shadow-[0_20px_40px_rgba(234,88,12,0.15)] group-hover:shadow-[0_20px_40px_rgba(234,88,12,0.25)] rotate-3 group-hover:rotate-0 transition-all duration-700 border border-orange-500/10">
             <img src="/moclogo.png" alt="DineByte Logo" className="w-full h-full object-contain" />
           </div>
           <div>
-            <h1 className="text-2xl font-black text-white leading-tight tracking-tighter group-hover:text-orange-500 transition-colors">DineByte</h1>
-            <p className="text-[10px] text-orange-500 font-black uppercase tracking-[0.2em] animate-pulse">Command Center</p>
+            <h1 className="text-2xl font-black text-white leading-tight tracking-tighter group-hover:text-orange-500 transition-all duration-500">
+              Dine<span className="text-orange-600">Byte</span>
+            </h1>
+            <div className="flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-orange-600 animate-pulse" />
+              <p className="text-[9px] text-orange-500/80 font-black uppercase tracking-[0.3em]">Command Center</p>
+            </div>
           </div>
         </Link>
       </div>
@@ -187,9 +192,12 @@ export default function AdminSidebar({ activeTab }: AdminSidebarProps) {
   return (
     <>
       {/* Desktop Sidebar */}
-      <aside className="hidden lg:flex w-80 bg-gray-900/95 backdrop-blur-2xl flex-col h-screen sticky left-0 top-0 border-r border-white/5 shadow-[20px_0_50px_rgba(0,0,0,0.3)] z-20 shrink-0">
+      <aside className="hidden lg:flex w-80 bg-gray-900/95 backdrop-blur-2xl flex-col h-screen fixed left-0 top-0 border-r border-white/5 shadow-[20px_0_50px_rgba(0,0,0,0.3)] z-20">
         <SidebarContent />
       </aside>
+
+      {/* Spacer for fixed sidebar on desktop */}
+      <div className="hidden lg:block w-80 shrink-0" />
 
       {/* Mobile Menu Toggle */}
       <button 

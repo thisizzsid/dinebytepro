@@ -124,6 +124,7 @@ export default function CustomersAdmin() {
   );
 
   const totalGave = customers.reduce((acc, curr) => acc + (curr.dueAmount || 0), 0);
+  const customersWithDues = customers.filter(c => (c.dueAmount || 0) > 0).length;
 
   // 3. Handle adding transaction (gave/got)
   const handleAddTransaction = async () => {
@@ -221,6 +222,44 @@ export default function CustomersAdmin() {
       <main className="flex-1 transition-all duration-500 flex flex-col h-screen">
         <div className="max-w-7xl mx-auto w-full flex flex-col h-full p-4 md:p-8">
           
+          {/* Header Section */}
+          <header className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
+            <div>
+              <motion.div 
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="flex items-center gap-3 mb-4"
+              >
+                <div className="w-12 h-12 bg-linear-to-br from-orange-600 to-orange-400 rounded-2xl flex items-center justify-center shadow-[0_10px_20px_rgba(234,88,12,0.2)]">
+                  <Users className="text-white" size={24} />
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-[9px] font-black text-orange-600 uppercase tracking-[0.3em]">Ledger System</span>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />
+                    <span className="text-[8px] font-bold text-gray-400 uppercase tracking-widest">v2.4 Live</span>
+                  </div>
+                </div>
+              </motion.div>
+              <h1 className="text-6xl font-black text-gray-900 tracking-tighter uppercase leading-[0.85] italic">Customer <span className="text-orange-600">Dues</span></h1>
+            </div>
+
+            <div className="flex gap-4">
+              <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-gray-100 min-w-50 group hover:border-orange-100 transition-colors">
+                <p className="text-[9px] text-gray-400 font-black uppercase tracking-widest mb-2 flex items-center gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-red-500" /> Total Outstanding
+                </p>
+                <p className="text-3xl font-black text-gray-900 group-hover:text-orange-600 transition-colors">{formatPrice(totalGave)}</p>
+              </div>
+              <div className="bg-gray-900 p-6 rounded-[2.5rem] shadow-2xl min-w-50 text-white group hover:bg-black transition-colors">
+                <p className="text-[9px] text-white/40 font-black uppercase tracking-widest mb-2 flex items-center gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Active Credit
+                </p>
+                <p className="text-3xl font-black group-hover:text-orange-500 transition-colors">{customersWithDues}</p>
+              </div>
+            </div>
+          </header>
+          
           <AnimatePresence mode="wait">
             {!selectedCustomer ? (
               /* --- CUSTOMER LIST VIEW (KHATABOOK STYLE) --- */
@@ -232,14 +271,15 @@ export default function CustomersAdmin() {
                 className="flex flex-col h-full"
               >
                 {/* Top Summary Card */}
-                <div className="bg-white p-6 rounded-3xl shadow-sm mb-6 flex justify-between items-center border border-gray-100">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-orange-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-orange-600/20">
+                <div className="bg-white p-6 rounded-3xl shadow-sm mb-6 flex justify-between items-center border border-gray-100 overflow-hidden relative">
+                  <div className="absolute right-0 top-0 w-32 h-32 bg-orange-500/5 rounded-full blur-3xl -mr-16 -mt-16" />
+                  <div className="flex items-center gap-4 relative z-10">
+                    <div className="w-12 h-12 bg-linear-to-tr from-orange-600 to-orange-400 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-orange-600/20">
                       <Wallet size={24} />
                     </div>
                     <div>
-                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Net Balance</p>
-                      <p className="text-2xl font-black text-red-600">{formatPrice(totalGave)} <span className="text-[10px] text-gray-400 uppercase tracking-widest ml-1 font-bold">You will get</span></p>
+                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Global Status</p>
+                      <p className="text-2xl font-black text-red-600">{formatPrice(totalGave)} <span className="text-[9px] text-gray-400 uppercase tracking-[0.2em] ml-2 font-black italic opacity-60 underline decoration-orange-500/30">Receivable</span></p>
                     </div>
                   </div>
                   <div className="flex gap-2">

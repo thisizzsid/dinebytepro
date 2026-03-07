@@ -38,7 +38,9 @@ import {
   Timer,
   Utensils,
   Minus,
-  X
+  X,
+  ShieldAlert,
+  BrainCircuit
 } from "lucide-react";
 import { format } from "date-fns";
 import { QRCodeSVG } from "qrcode.react";
@@ -50,7 +52,7 @@ import DarkToggle from "@/components/DarkToggle";
 import MenuItemModal from "@/components/MenuItemModal";
 import { motion, AnimatePresence } from "framer-motion";
 import { getBusinessInsights } from "../../../lib/gemini";
-import { Sparkles as SparklesIcon, BrainCircuit, Lightbulb, TrendingUp } from "lucide-react";
+import { Sparkles as SparklesIcon, Lightbulb, TrendingUp } from "lucide-react";
 
 import AdminSidebar from "@/components/AdminSidebar";
 
@@ -725,96 +727,164 @@ export default function AdminPage() {
 
   if (!isAdminAuthenticated) {
     return (
-      <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center p-6">
-        <div className="w-full max-w-md bg-white rounded-[2.5rem] shadow-2xl p-10 text-center">
-          <div className="w-20 h-20 bg-orange-600 rounded-3xl flex items-center justify-center mx-auto mb-8 rotate-6 shadow-xl shadow-orange-600/20">
-            <Lock className="text-white w-10 h-10" />
+      <div className="min-h-screen bg-white flex flex-col lg:flex-row overflow-hidden">
+        {/* Left Side: Login Form */}
+        <div className="w-full lg:w-1/2 flex items-center justify-center p-8 lg:p-16 bg-white relative z-10">
+          <div className="w-full max-w-md">
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="text-center lg:text-left mb-12"
+            >
+              <div className="w-20 h-20 bg-orange-600 rounded-4xl flex items-center justify-center mb-8 rotate-6 shadow-2xl shadow-orange-600/20 mx-auto lg:mx-0 group hover:rotate-0 transition-all duration-500">
+                <Lock className="text-white w-10 h-10" />
+              </div>
+              <h1 className="text-5xl font-black text-gray-900 leading-none tracking-tighter mb-4 uppercase italic">Admin <span className="text-orange-600">Portal</span></h1>
+              <p className="text-gray-400 font-bold uppercase tracking-[0.3em] text-[10px] flex items-center justify-center lg:justify-start gap-2">
+                <span className="w-2 h-2 rounded-full bg-orange-600 animate-pulse" /> Secure Terminal 01
+              </p>
+            </motion.div>
+            
+            <form onSubmit={handleAdminLogin} className="space-y-8">
+              <div className="space-y-3">
+                <label htmlFor="admin-email" className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">Access Email</label>
+                <div className="relative group">
+                  <User className="absolute left-6 top-1/2 -translate-y-1/2 text-gray-300 group-focus-within:text-orange-600 transition-colors" size={20} />
+                  <input 
+                    id="admin-email"
+                    type="email"
+                    value={adminEmail}
+                    onChange={(e) => setAdminEmail(e.target.value)}
+                    placeholder="admin@dinebyte.com"
+                    className="w-full bg-gray-50 border-2 border-transparent focus:border-orange-600/20 focus:bg-white rounded-3xl py-6 pl-16 pr-8 text-gray-900 font-black transition-all outline-none text-sm"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex justify-between items-center px-1">
+                  <label htmlFor="admin-pass" className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Security Key</label>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!adminEmail) return setAuthError("Enter your email to reset password");
+                      try {
+                        await sendPasswordResetEmail(auth, adminEmail);
+                        setAuthError("Password reset email sent");
+                      } catch (e: any) {
+                        setAuthError(e.message || "Failed to send reset email");
+                      }
+                    }}
+                    className="text-[9px] font-black text-orange-600 uppercase tracking-widest hover:underline"
+                  >Forgot Key?</button>
+                </div>
+                <div className="relative group">
+                  <Lock className="absolute left-6 top-1/2 -translate-y-1/2 text-gray-300 group-focus-within:text-orange-600 transition-colors" size={20} />
+                  <input 
+                    id="admin-pass"
+                    type="password"
+                    value={adminPassword}
+                    onChange={(e) => setAdminPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full bg-gray-50 border-2 border-transparent focus:border-orange-600/20 focus:bg-white rounded-3xl py-6 pl-16 pr-8 text-gray-900 font-black tracking-[0.5em] transition-all outline-none text-sm"
+                  />
+                </div>
+              </div>
+
+              {authError && (
+                <motion.div 
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  className="bg-red-50 text-red-600 p-5 rounded-2xl flex items-center gap-3 text-[10px] font-black uppercase tracking-widest border border-red-100"
+                >
+                  <AlertCircle size={18} /> {authError}
+                </motion.div>
+              )}
+
+              <div className="space-y-4 pt-4">
+                <button 
+                  type="submit"
+                  className="w-full bg-gray-900 text-white py-6 rounded-3xl font-black text-xs tracking-[0.3em] uppercase shadow-2xl hover:bg-orange-600 transition-all active:scale-95 flex items-center justify-center gap-3 group/btn"
+                >
+                  INITIALIZE SESSION <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
+                </button>
+
+                <button 
+                  type="button"
+                  onClick={handleGoogleAdminLogin}
+                  className="w-full bg-white border-2 border-gray-100 text-gray-900 py-5 rounded-3xl font-black text-[10px] tracking-[0.2em] uppercase hover:bg-gray-50 transition-all flex items-center justify-center gap-3 group/google"
+                >
+                  <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                  Continue with Google
+                </button>
+              </div>
+            </form>
+
+            <div className="mt-12 pt-8 border-t border-gray-100 text-center lg:text-left">
+              <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">
+                New to the ecosystem? <a href="/onboarding" className="text-orange-600 hover:underline">Activate Restaurant</a>
+              </p>
+            </div>
           </div>
-          <h1 className="text-3xl font-black text-gray-900 leading-tight mb-2">Admin Access</h1>
-          <p className="text-gray-400 font-bold mb-8 uppercase tracking-widest text-[10px]">Restricted Terminal 01</p>
+        </div>
+
+        {/* Right Side: DineByte Ad/Branding */}
+        <div className="hidden lg:flex w-1/2 bg-gray-900 relative overflow-hidden items-center justify-center p-20">
+          {/* Animated Background Elements */}
+          <div className="absolute top-0 right-0 w-full h-full opacity-30">
+            <div className="absolute top-[-10%] right-[-10%] w-[60%] h-[60%] bg-orange-600 rounded-full blur-[120px] animate-pulse" />
+            <div className="absolute bottom-[-10%] left-[-10%] w-[60%] h-[60%] bg-indigo-600 rounded-full blur-[120px] animate-pulse delay-1000" />
+          </div>
           
-          <form onSubmit={handleAdminLogin} className="space-y-6">
-            <div className="space-y-2 text-left">
-              <label htmlFor="admin-email" className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Email address</label>
-              <div className="relative group">
-                <User className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-300 group-focus-within:text-orange-600 transition-colors" size={20} />
-                <input 
-                  id="admin-email"
-                  type="email"
-                  value={adminEmail}
-                  onChange={(e) => setAdminEmail(e.target.value)}
-                  placeholder="name@domain.com"
-                  className="w-full bg-gray-50 border-2 border-transparent focus:border-orange-600 rounded-2xl py-4 pl-14 pr-6 text-gray-900 font-black transition-all outline-none"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2 text-left">
-              <label htmlFor="admin-pass" className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Password</label>
-              <div className="relative group">
-                <Lock className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-300 group-focus-within:text-orange-600 transition-colors" size={20} />
-                <input 
-                  id="admin-pass"
-                  type="password"
-                  value={adminPassword}
-                  onChange={(e) => setAdminPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full bg-gray-50 border-2 border-transparent focus:border-orange-600 rounded-2xl py-4 pl-14 pr-6 text-gray-900 font-black tracking-widest transition-all outline-none"
-                />
-              </div>
-              <button
-                type="button"
-                onClick={async () => {
-                  if (!adminEmail) return setAuthError("Enter your email to reset password");
-                  try {
-                    await sendPasswordResetEmail(auth, adminEmail);
-                    setAuthError("Password reset email sent");
-                  } catch (e: any) {
-                    setAuthError(e.message || "Failed to send reset email");
-                  }
-                }}
-                className="text-xs text-blue-600 hover:underline mt-1"
-              >Forgot password?</button>
-            </div>
-
-            {authError && (
-              <div className="bg-red-50 text-red-600 p-4 rounded-2xl flex items-center gap-3 text-xs font-bold border border-red-100 animate-shake">
-                <AlertCircle size={18} /> {authError}
-              </div>
-            )}
-
-            <button 
-              type="submit"
-              className="w-full bg-gray-900 text-white py-5 rounded-2xl font-black text-sm tracking-widest shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-3"
+          <div className="relative z-10 text-center max-w-lg">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.8 }}
             >
-              ADMIN LOGIN <ArrowRight size={18} />
-            </button>
+              <div className="w-24 h-24 bg-white rounded-[2.5rem] flex items-center justify-center mx-auto mb-10 shadow-2xl rotate-3 p-4">
+                <img src="/moclogo.png" alt="DineByte Logo" className="w-full h-full object-contain" />
+              </div>
+              <h2 className="text-6xl font-black text-white tracking-tighter mb-6 leading-none uppercase italic">
+                Dine<span className="text-orange-600">Byte</span>
+              </h2>
+              <p className="text-orange-500 font-black uppercase tracking-[0.5em] text-xs mb-10">Next-Gen Restaurant OS</p>
+              
+              <div className="grid grid-cols-2 gap-6 text-left">
+                <div className="p-6 bg-white/5 backdrop-blur-xl rounded-3xl border border-white/10 hover:bg-white/10 transition-all group">
+                  <div className="w-10 h-10 bg-orange-600/20 rounded-xl flex items-center justify-center mb-4 text-orange-500 group-hover:scale-110 transition-transform">
+                    <Activity size={20} />
+                  </div>
+                  <h4 className="text-white font-black text-[10px] uppercase tracking-widest mb-2">Live Analytics</h4>
+                  <p className="text-gray-400 text-[9px] font-bold leading-relaxed uppercase tracking-wider">Real-time data synchronization across all terminals.</p>
+                </div>
+                <div className="p-6 bg-white/5 backdrop-blur-xl rounded-3xl border border-white/10 hover:bg-white/10 transition-all group">
+                  <div className="w-10 h-10 bg-blue-600/20 rounded-xl flex items-center justify-center mb-4 text-blue-500 group-hover:scale-110 transition-transform">
+                    <ShieldAlert size={20} />
+                  </div>
+                  <h4 className="text-white font-black text-[10px] uppercase tracking-widest mb-2">Fraud Shield</h4>
+                  <p className="text-gray-400 text-[9px] font-bold leading-relaxed uppercase tracking-wider">Military-grade geofencing and security protocols.</p>
+                </div>
+                <div className="p-6 bg-white/5 backdrop-blur-xl rounded-3xl border border-white/10 hover:bg-white/10 transition-all group">
+                  <div className="w-10 h-10 bg-purple-600/20 rounded-xl flex items-center justify-center mb-4 text-purple-500 group-hover:scale-110 transition-transform">
+                    <BrainCircuit size={20} />
+                  </div>
+                  <h4 className="text-white font-black text-[10px] uppercase tracking-widest mb-2">AI Insights</h4>
+                  <p className="text-gray-400 text-[9px] font-bold leading-relaxed uppercase tracking-wider">Predictive business intelligence powered by Gemini.</p>
+                </div>
+                <div className="p-6 bg-white/5 backdrop-blur-xl rounded-3xl border border-white/10 hover:bg-white/10 transition-all group">
+                  <div className="w-10 h-10 bg-emerald-600/20 rounded-xl flex items-center justify-center mb-4 text-emerald-500 group-hover:scale-110 transition-transform">
+                    <IndianRupee size={20} />
+                  </div>
+                  <h4 className="text-white font-black text-[10px] uppercase tracking-widest mb-2">Smart Billing</h4>
+                  <p className="text-gray-400 text-[9px] font-bold leading-relaxed uppercase tracking-wider">Automated ledger and digital invoice generation.</p>
+                </div>
+              </div>
+            </motion.div>
+          </div>
 
-            <div className="relative flex items-center py-2">
-              <div className="grow border-t border-gray-100"></div>
-              <span className="shrink mx-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">OR</span>
-              <div className="grow border-t border-gray-100"></div>
-            </div>
-
-            <button 
-              type="button"
-              onClick={handleGoogleAdminLogin}
-              className="w-full bg-white border-2 border-gray-100 text-gray-700 py-4 rounded-2xl font-black text-xs tracking-widest hover:bg-gray-50 transition-all flex items-center justify-center gap-3"
-            >
-              <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
-              LOGIN WITH GOOGLE
-            </button>
-            <p className="text-xs text-gray-500 mt-4">
-              New here? <a href="/onboarding" className="text-blue-600 hover:underline">Activate your restaurant</a>
-            </p>
-          </form>
-          {/* provider support email for admin access issues */}
-          <p className="text-[10px] text-gray-500 mt-6">
-            Need help from provider? Email{' '}
-            <a href="mailto:siddhant.anand17@gmail.com" className="underline">
-              siddhant.anand17@gmail.com
-            </a>
-          </p>
+          {/* Decorative Grid */}
+          <div className="absolute inset-0 opacity-10 pointer-events-none bg-[radial-gradient(circle,#fff_1px,transparent_1px)] bg-size-[40px_40px]" />
         </div>
       </div>
     );
