@@ -293,8 +293,51 @@ export default function OnboardingPage() {
 
   return (
     <div className="min-h-screen bg-white flex flex-col lg:flex-row overflow-hidden">
-      {/* Left Side: Onboarding Content */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-8 lg:p-16 relative z-10 bg-white overflow-y-auto max-h-screen custom-scrollbar">
+      {/* Left Side: DineByte Ad/Branding */}
+      <div className="hidden lg:flex lg:w-1/2 bg-gray-900 relative overflow-hidden items-center justify-center p-20 order-1">
+        <div className="absolute top-0 right-0 w-full h-full opacity-30">
+          <div className="absolute top-[-10%] right-[-10%] w-[60%] h-[60%] bg-orange-600 rounded-full blur-[120px] animate-pulse" />
+          <div className="absolute bottom-[-10%] left-[-10%] w-[60%] h-[60%] bg-indigo-600 rounded-full blur-[120px] animate-pulse delay-1000" />
+        </div>
+        
+        <div className="relative z-10 text-center max-w-lg">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.8 }}
+          >
+            <div className="w-24 h-24 bg-white rounded-[2.5rem] flex items-center justify-center mx-auto mb-10 shadow-2xl rotate-3 p-4">
+              <img src="/moclogo.png" alt="DineByte Logo" className="w-full h-full object-contain" />
+            </div>
+            <h2 className="text-6xl font-black text-white tracking-tighter mb-6 leading-none uppercase italic">
+              Dine<span className="text-orange-600">Byte</span>
+            </h2>
+            <p className="text-orange-500 font-black uppercase tracking-[0.5em] text-xs mb-10">Next-Gen Restaurant OS</p>
+            
+            <div className="grid grid-cols-2 gap-6 text-left">
+              {[
+                { icon: Activity, label: "Live Analytics", desc: "Real-time data synchronization across all terminals.", color: "text-orange-500", bg: "bg-orange-600/20" },
+                { icon: ShieldAlert, label: "Fraud Shield", desc: "Military-grade geofencing and security protocols.", color: "text-blue-500", bg: "bg-blue-600/20" },
+                { icon: BrainCircuit, label: "AI Insights", desc: "Predictive business intelligence powered by Gemini.", color: "text-purple-500", bg: "bg-purple-600/20" },
+                { icon: IndianRupee, label: "Smart Billing", desc: "Automated ledger and digital invoice generation.", color: "text-emerald-500", bg: "bg-emerald-600/20" }
+              ].map((feature, i) => (
+                <div key={i} className="p-6 bg-white/5 backdrop-blur-xl rounded-3xl border border-white/10 hover:bg-white/10 transition-all group">
+                  <div className={`w-10 h-10 ${feature.bg} rounded-xl flex items-center justify-center mb-4 ${feature.color} group-hover:scale-110 transition-transform`}>
+                    <feature.icon size={20} />
+                  </div>
+                  <h4 className="text-white font-black text-[10px] uppercase tracking-widest mb-2">{feature.label}</h4>
+                  <p className="text-gray-400 text-[9px] font-bold leading-relaxed uppercase tracking-wider">{feature.desc}</p>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        </div>
+
+        <div className="absolute inset-0 opacity-10 pointer-events-none bg-[radial-gradient(circle,#fff_1px,transparent_1px)] bg-size-[40px_40px]" />
+      </div>
+
+      {/* Right Side: Onboarding Content */}
+      <div className="w-full lg:w-1/2 flex items-center justify-center p-8 lg:p-16 relative z-10 bg-white overflow-y-auto max-h-screen custom-scrollbar order-2">
         <div className="w-full max-w-xl">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -671,49 +714,6 @@ export default function OnboardingPage() {
             </p>
           </div>
         </div>
-      </div>
-
-      {/* Right Side: DineByte Ad/Branding */}
-      <div className="hidden lg:flex lg:w-1/2 bg-gray-900 relative overflow-hidden items-center justify-center p-20">
-        <div className="absolute top-0 right-0 w-full h-full opacity-30">
-          <div className="absolute top-[-10%] right-[-10%] w-[60%] h-[60%] bg-orange-600 rounded-full blur-[120px] animate-pulse" />
-          <div className="absolute bottom-[-10%] left-[-10%] w-[60%] h-[60%] bg-indigo-600 rounded-full blur-[120px] animate-pulse delay-1000" />
-        </div>
-        
-        <div className="relative z-10 text-center max-w-lg">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.8 }}
-          >
-            <div className="w-24 h-24 bg-white rounded-[2.5rem] flex items-center justify-center mx-auto mb-10 shadow-2xl rotate-3 p-4">
-              <img src="/moclogo.png" alt="DineByte Logo" className="w-full h-full object-contain" />
-            </div>
-            <h2 className="text-6xl font-black text-white tracking-tighter mb-6 leading-none uppercase italic">
-              Dine<span className="text-orange-600">Byte</span>
-            </h2>
-            <p className="text-orange-500 font-black uppercase tracking-[0.5em] text-xs mb-10">Next-Gen Restaurant OS</p>
-            
-            <div className="grid grid-cols-2 gap-6 text-left">
-              {[
-                { icon: Activity, label: "Live Analytics", desc: "Real-time data synchronization across all terminals.", color: "text-orange-500", bg: "bg-orange-600/20" },
-                { icon: ShieldAlert, label: "Fraud Shield", desc: "Military-grade geofencing and security protocols.", color: "text-blue-500", bg: "bg-blue-600/20" },
-                { icon: BrainCircuit, label: "AI Insights", desc: "Predictive business intelligence powered by Gemini.", color: "text-purple-500", bg: "bg-purple-600/20" },
-                { icon: IndianRupee, label: "Smart Billing", desc: "Automated ledger and digital invoice generation.", color: "text-emerald-500", bg: "bg-emerald-600/20" }
-              ].map((feature, i) => (
-                <div key={i} className="p-6 bg-white/5 backdrop-blur-xl rounded-3xl border border-white/10 hover:bg-white/10 transition-all group">
-                  <div className={`w-10 h-10 ${feature.bg} rounded-xl flex items-center justify-center mb-4 ${feature.color} group-hover:scale-110 transition-transform`}>
-                    <feature.icon size={20} />
-                  </div>
-                  <h4 className="text-white font-black text-[10px] uppercase tracking-widest mb-2">{feature.label}</h4>
-                  <p className="text-gray-400 text-[9px] font-bold leading-relaxed uppercase tracking-wider">{feature.desc}</p>
-                </div>
-              ))}
-            </div>
-          </motion.div>
-        </div>
-
-        <div className="absolute inset-0 opacity-10 pointer-events-none bg-[radial-gradient(circle,#fff_1px,transparent_1px)] bg-size-[40px_40px]" />
       </div>
 
       {/* Legal Modal */}

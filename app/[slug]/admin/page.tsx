@@ -728,8 +728,67 @@ export default function AdminPage() {
   if (!isAdminAuthenticated) {
     return (
       <div className="min-h-screen bg-white flex flex-col lg:flex-row overflow-hidden">
-        {/* Left Side: Login Form */}
-        <div className="w-full lg:w-1/2 flex items-center justify-center p-8 lg:p-16 bg-white relative z-10">
+        {/* Left Side: DineByte Ad/Branding */}
+        <div className="hidden lg:flex w-1/2 bg-gray-900 relative overflow-hidden items-center justify-center p-20 order-1">
+          {/* Animated Background Elements */}
+          <div className="absolute top-0 right-0 w-full h-full opacity-30">
+            <div className="absolute top-[-10%] right-[-10%] w-[60%] h-[60%] bg-orange-600 rounded-full blur-[120px] animate-pulse" />
+            <div className="absolute bottom-[-10%] left-[-10%] w-[60%] h-[60%] bg-indigo-600 rounded-full blur-[120px] animate-pulse delay-1000" />
+          </div>
+          
+          <div className="relative z-10 text-center max-w-lg">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.8 }}
+            >
+              <div className="w-24 h-24 bg-white rounded-[2.5rem] flex items-center justify-center mx-auto mb-10 shadow-2xl rotate-3 p-4">
+                <img src="/moclogo.png" alt="DineByte Logo" className="w-full h-full object-contain" />
+              </div>
+              <h2 className="text-6xl font-black text-white tracking-tighter mb-6 leading-none uppercase italic">
+                Dine<span className="text-orange-600">Byte</span>
+              </h2>
+              <p className="text-orange-500 font-black uppercase tracking-[0.5em] text-xs mb-10">Next-Gen Restaurant OS</p>
+              
+              <div className="grid grid-cols-2 gap-6 text-left">
+                <div className="p-6 bg-white/5 backdrop-blur-xl rounded-3xl border border-white/10 hover:bg-white/10 transition-all group">
+                  <div className="w-10 h-10 bg-orange-600/20 rounded-xl flex items-center justify-center mb-4 text-orange-500 group-hover:scale-110 transition-transform">
+                    <Activity size={20} />
+                  </div>
+                  <h4 className="text-white font-black text-[10px] uppercase tracking-widest mb-2">Live Analytics</h4>
+                  <p className="text-gray-400 text-[9px] font-bold leading-relaxed uppercase tracking-wider">Real-time data synchronization across all terminals.</p>
+                </div>
+                <div className="p-6 bg-white/5 backdrop-blur-xl rounded-3xl border border-white/10 hover:bg-white/10 transition-all group">
+                  <div className="w-10 h-10 bg-blue-600/20 rounded-xl flex items-center justify-center mb-4 text-blue-500 group-hover:scale-110 transition-transform">
+                    <ShieldAlert size={20} />
+                  </div>
+                  <h4 className="text-white font-black text-[10px] uppercase tracking-widest mb-2">Fraud Shield</h4>
+                  <p className="text-gray-400 text-[9px] font-bold leading-relaxed uppercase tracking-wider">Military-grade geofencing and security protocols.</p>
+                </div>
+                <div className="p-6 bg-white/5 backdrop-blur-xl rounded-3xl border border-white/10 hover:bg-white/10 transition-all group">
+                  <div className="w-10 h-10 bg-purple-600/20 rounded-xl flex items-center justify-center mb-4 text-purple-500 group-hover:scale-110 transition-transform">
+                    <BrainCircuit size={20} />
+                  </div>
+                  <h4 className="text-white font-black text-[10px] uppercase tracking-widest mb-2">AI Insights</h4>
+                  <p className="text-gray-400 text-[9px] font-bold leading-relaxed uppercase tracking-wider">Predictive business intelligence powered by Gemini.</p>
+                </div>
+                <div className="p-6 bg-white/5 backdrop-blur-xl rounded-3xl border border-white/10 hover:bg-white/10 transition-all group">
+                  <div className="w-10 h-10 bg-emerald-600/20 rounded-xl flex items-center justify-center mb-4 text-emerald-500 group-hover:scale-110 transition-transform">
+                    <IndianRupee size={20} />
+                  </div>
+                  <h4 className="text-white font-black text-[10px] uppercase tracking-widest mb-2">Smart Billing</h4>
+                  <p className="text-gray-400 text-[9px] font-bold leading-relaxed uppercase tracking-wider">Automated ledger and digital invoice generation.</p>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+
+          {/* Decorative Grid */}
+          <div className="absolute inset-0 opacity-10 pointer-events-none bg-[radial-gradient(circle,#fff_1px,transparent_1px)] bg-size-[40px_40px]" />
+        </div>
+
+        {/* Right Side: Login Form */}
+        <div className="w-full lg:w-1/2 flex items-center justify-center p-8 lg:p-16 bg-white relative z-10 order-2">
           <div className="w-full max-w-md">
             <motion.div 
               initial={{ opacity: 0, y: 20 }}
@@ -826,65 +885,6 @@ export default function AdminPage() {
               </p>
             </div>
           </div>
-        </div>
-
-        {/* Right Side: DineByte Ad/Branding */}
-        <div className="hidden lg:flex w-1/2 bg-gray-900 relative overflow-hidden items-center justify-center p-20">
-          {/* Animated Background Elements */}
-          <div className="absolute top-0 right-0 w-full h-full opacity-30">
-            <div className="absolute top-[-10%] right-[-10%] w-[60%] h-[60%] bg-orange-600 rounded-full blur-[120px] animate-pulse" />
-            <div className="absolute bottom-[-10%] left-[-10%] w-[60%] h-[60%] bg-indigo-600 rounded-full blur-[120px] animate-pulse delay-1000" />
-          </div>
-          
-          <div className="relative z-10 text-center max-w-lg">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.8 }}
-            >
-              <div className="w-24 h-24 bg-white rounded-[2.5rem] flex items-center justify-center mx-auto mb-10 shadow-2xl rotate-3 p-4">
-                <img src="/moclogo.png" alt="DineByte Logo" className="w-full h-full object-contain" />
-              </div>
-              <h2 className="text-6xl font-black text-white tracking-tighter mb-6 leading-none uppercase italic">
-                Dine<span className="text-orange-600">Byte</span>
-              </h2>
-              <p className="text-orange-500 font-black uppercase tracking-[0.5em] text-xs mb-10">Next-Gen Restaurant OS</p>
-              
-              <div className="grid grid-cols-2 gap-6 text-left">
-                <div className="p-6 bg-white/5 backdrop-blur-xl rounded-3xl border border-white/10 hover:bg-white/10 transition-all group">
-                  <div className="w-10 h-10 bg-orange-600/20 rounded-xl flex items-center justify-center mb-4 text-orange-500 group-hover:scale-110 transition-transform">
-                    <Activity size={20} />
-                  </div>
-                  <h4 className="text-white font-black text-[10px] uppercase tracking-widest mb-2">Live Analytics</h4>
-                  <p className="text-gray-400 text-[9px] font-bold leading-relaxed uppercase tracking-wider">Real-time data synchronization across all terminals.</p>
-                </div>
-                <div className="p-6 bg-white/5 backdrop-blur-xl rounded-3xl border border-white/10 hover:bg-white/10 transition-all group">
-                  <div className="w-10 h-10 bg-blue-600/20 rounded-xl flex items-center justify-center mb-4 text-blue-500 group-hover:scale-110 transition-transform">
-                    <ShieldAlert size={20} />
-                  </div>
-                  <h4 className="text-white font-black text-[10px] uppercase tracking-widest mb-2">Fraud Shield</h4>
-                  <p className="text-gray-400 text-[9px] font-bold leading-relaxed uppercase tracking-wider">Military-grade geofencing and security protocols.</p>
-                </div>
-                <div className="p-6 bg-white/5 backdrop-blur-xl rounded-3xl border border-white/10 hover:bg-white/10 transition-all group">
-                  <div className="w-10 h-10 bg-purple-600/20 rounded-xl flex items-center justify-center mb-4 text-purple-500 group-hover:scale-110 transition-transform">
-                    <BrainCircuit size={20} />
-                  </div>
-                  <h4 className="text-white font-black text-[10px] uppercase tracking-widest mb-2">AI Insights</h4>
-                  <p className="text-gray-400 text-[9px] font-bold leading-relaxed uppercase tracking-wider">Predictive business intelligence powered by Gemini.</p>
-                </div>
-                <div className="p-6 bg-white/5 backdrop-blur-xl rounded-3xl border border-white/10 hover:bg-white/10 transition-all group">
-                  <div className="w-10 h-10 bg-emerald-600/20 rounded-xl flex items-center justify-center mb-4 text-emerald-500 group-hover:scale-110 transition-transform">
-                    <IndianRupee size={20} />
-                  </div>
-                  <h4 className="text-white font-black text-[10px] uppercase tracking-widest mb-2">Smart Billing</h4>
-                  <p className="text-gray-400 text-[9px] font-bold leading-relaxed uppercase tracking-wider">Automated ledger and digital invoice generation.</p>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-
-          {/* Decorative Grid */}
-          <div className="absolute inset-0 opacity-10 pointer-events-none bg-[radial-gradient(circle,#fff_1px,transparent_1px)] bg-size-[40px_40px]" />
         </div>
       </div>
     );
