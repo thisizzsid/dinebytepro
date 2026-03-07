@@ -10,8 +10,14 @@
    slug: string;
    name: string;
    status: string;
+   location?: {
+     lat: number;
+     lng: number;
+   };
    settings?: {
      upiId?: string;
+     geofencingEnabled?: boolean;
+     geofencingRadius?: number;
    };
  }
  
@@ -52,6 +58,7 @@
            slug: docSnap.id,
            name: data.name,
            status: data.status,
+           location: data.location || null,
            settings: data.settings || {},
          });
        } else {

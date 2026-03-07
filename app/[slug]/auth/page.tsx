@@ -6,7 +6,7 @@ import { useAuth } from "../../../lib/auth-context";
 import PhoneInput from "react-phone-input-2";
 import "react-phone-input-2/lib/style.css";
 import { motion } from "framer-motion";
-import { User, ShieldCheck, ArrowRight, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
+import { User, ShieldCheck, ArrowRight, CheckCircle2, AlertCircle, Loader2, Home } from "lucide-react";
 import { db } from "../../../lib/firebase/config";
 import { collection, addDoc, serverTimestamp, Timestamp } from "firebase/firestore";
 
@@ -18,6 +18,7 @@ export default function AuthPage() {
   const [formData, setFormData] = useState({
     name: "",
     phone: "",
+    address: "",
     tableNumber: "",
     partySize: 1,
   });
@@ -53,6 +54,10 @@ export default function AuthPage() {
     
     if (formData.phone.length < 10) {
       newErrors.phone = "Please enter a valid mobile number";
+    }
+
+    if (formData.address.trim().length < 5) {
+      newErrors.address = "Please enter your complete address";
     }
 
     if (formData.tableNumber.trim().length === 0) {
@@ -110,6 +115,8 @@ export default function AuthPage() {
       const customerData = {
         name: formData.name,
         mobile: formData.phone,
+        address: formData.address,
+        dueAmount: 0,
         verified: true,
         createdAt: serverTimestamp(),
       };
@@ -235,6 +242,24 @@ export default function AuthPage() {
                 />
               </div>
               {errors.phone && <p className="text-[10px] text-red-500 font-black uppercase tracking-tighter ml-1">{errors.phone}</p>}
+            </div>
+
+            {/* Complete Address */}
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Complete Address</label>
+              <div className="relative">
+                <Home className={`absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 transition-colors ${errors.address ? 'text-red-400' : 'text-gray-300'}`} />
+                <input 
+                  type="text"
+                  value={formData.address}
+                  onChange={(e) => handleInputChange("address", e.target.value)}
+                  placeholder="Enter your complete address"
+                  className={`w-full bg-gray-50 border-2 rounded-2xl py-4 pl-12 pr-4 text-gray-900 font-bold focus:ring-0 transition-all ${
+                    errors.address ? 'border-red-100 bg-red-50/30' : 'border-transparent focus:border-orange-600'
+                  }`}
+                />
+              </div>
+              {errors.address && <p className="text-[10px] text-red-500 font-black uppercase tracking-tighter ml-1">{errors.address}</p>}
             </div>
 
             {/* Table Number */}

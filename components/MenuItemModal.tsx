@@ -233,7 +233,7 @@ export default function MenuItemModal({
                   </button>
                 </div>
 
-                <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                <div className="space-y-4 max-h-100 overflow-y-auto pr-2 custom-scrollbar">
                   {(newItem.ingredients || []).length === 0 ? (
                     <div className="bg-gray-50 rounded-2xl p-8 text-center border-2 border-dashed border-gray-200">
                       <Scale className="text-gray-300 mx-auto mb-3" size={32} />

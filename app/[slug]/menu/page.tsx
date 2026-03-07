@@ -12,6 +12,7 @@ import { db } from "../../../lib/firebase/config";
 import { collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, doc, where, getDocs, updateDoc } from "firebase/firestore";
 import { OrderType, PaymentType, MenuItem, ItemVariant, OrderItem } from "../../../types";
 import { motion, AnimatePresence } from "framer-motion";
+import { useLocation, calculateDistance } from "../../../lib/hooks/use-location";
 
 function MenuContent() {
   const router = useRouter();
@@ -21,6 +22,7 @@ function MenuContent() {
   const partySize = searchParams.get("party");
   const { customer, isLoading: isAuthLoading } = useAuth();
   const { items, addToCart, removeFromCart, clearCart, totalAmount } = useCart();
+  const { location: userLocation, error: locationError, loading: isLocationLoading } = useLocation();
   
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [upiId, setUpiId] = useState("");
@@ -127,6 +129,56 @@ function MenuContent() {
   const handlePlaceOrder = async () => {
     if (items.length === 0 || !customer || !restaurant) return;
     
+    // Geofencing Validation
+    const geofencingEnabled = restaurant.settings?.geofencingEnabled ?? true; // Default to enabled
+    const radius = restaurant.settings?.geofencingRadius ?? 80;
+    let distance = -1;
+    let isLocationValid = true;
+
+    if (geofencingEnabled && restaurant.location) {
+      if (!userLocation) {
+        alert("Location is required for ordering. Please enable location permissions.");
+        return;
+      }
+
+      distance = calculateDistance(userLocation, {
+        lat: restaurant.location.lat,
+        lng: restaurant.location.lng,
+      });
+
+      // Accuracy check (basic spoofing/reliability detection)
+      const isSpoofed = userLocation.accuracy && userLocation.accuracy > 150; // Inaccurate/Suspicious
+
+      if (distance > radius || isSpoofed) {
+        isLocationValid = false;
+        const message = isSpoofed 
+          ? "Location validation failed: Low accuracy or suspicious GPS data detected." 
+          : `Order blocked: You are too far from the restaurant (${Math.round(distance)}m). You must be within ${radius}m.`;
+        
+        alert(message);
+        
+        // Log the failed attempt
+        try {
+          await addDoc(collection(db, "restaurants", restaurant.id, "locationLogs"), {
+            restaurantId: restaurant.id,
+            customerId: customer.id,
+            customerName: customer.name,
+            userLat: userLocation.lat,
+            userLng: userLocation.lng,
+            restaurantLat: restaurant.location.lat,
+            restaurantLng: restaurant.location.lng,
+            distance: distance,
+            isValid: false,
+            isSpoofed: isSpoofed,
+            timestamp: serverTimestamp(),
+          });
+        } catch (e) {
+          console.error("Error logging failed location:", e);
+        }
+        return;
+      }
+    }
+
     setIsOrdering(true);
     try {
       const orderData = {
@@ -143,10 +195,33 @@ function MenuContent() {
         paymentStatus: "pending",
         orderStatus: "received",
         createdAt: serverTimestamp(),
+        locationValidated: isLocationValid,
+        locationDistance: distance,
       };
 
       const docRef = await addDoc(collection(db, "restaurants", restaurant.id, "orders"), orderData);
       
+      // Log successful validation
+      if (geofencingEnabled && restaurant.location && userLocation) {
+        try {
+          await addDoc(collection(db, "restaurants", restaurant.id, "locationLogs"), {
+            restaurantId: restaurant.id,
+            customerId: customer.id,
+            customerName: customer.name,
+            userLat: userLocation.lat,
+            userLng: userLocation.lng,
+            restaurantLat: restaurant.location.lat,
+            restaurantLng: restaurant.location.lng,
+            distance: distance,
+            isValid: true,
+            timestamp: serverTimestamp(),
+            orderId: docRef.id,
+          });
+        } catch (e) {
+          console.error("Error logging successful location:", e);
+        }
+      }
+
       clearCart();
       setShowFullCheckout(false);
       alert("Order placed successfully! Track it using the floating icon.");

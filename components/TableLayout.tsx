@@ -20,22 +20,27 @@ export default function TableLayout({ tables }: TableLayoutProps) {
     
     const containerRect = containerRef.current.getBoundingClientRect();
     
-    // Use the absolute pointer position relative to the container
-    const relativeX = info.point.x - containerRect.left;
-    const relativeY = info.point.y - containerRect.top;
+    // Get relative position from container top-left
+    const x = info.point.x - containerRect.left;
+    const y = info.point.y - containerRect.top;
 
-    // Convert to percentage
-    let newX = (relativeX / containerRect.width) * 100;
-    let newY = (relativeY / containerRect.height) * 100;
+    // Convert to percentage of container
+    let newX = (x / containerRect.width) * 100;
+    let newY = (y / containerRect.height) * 100;
 
-    // Offset by half the table size (approx 5-8% depending on viewport) 
-    // to center the drop point
-    newX = newX - 5; 
+    // Offset to center the table on the drop point
+    // A 10% offset (5% from center) is usually appropriate for the table size
+    newX = newX - 5;
     newY = newY - 5;
 
-    // Clamp values between 0 and 85 to keep tables within view
-    const clampedX = Math.max(0, Math.min(85, newX));
-    const clampedY = Math.max(0, Math.min(85, newY));
+    // Grid Snapping (Optional: snap to 2.5% increments for cleaner alignment)
+    const snap = 2.5;
+    const snappedX = Math.round(newX / snap) * snap;
+    const snappedY = Math.round(newY / snap) * snap;
+
+    // Clamp values between 0 and 90 to keep tables fully within the container
+    const clampedX = Math.max(0, Math.min(90, snappedX));
+    const clampedY = Math.max(0, Math.min(90, snappedY));
 
     if (table.id) {
       await updateTable(slug, table.id, { x: clampedX, y: clampedY });
@@ -45,10 +50,11 @@ export default function TableLayout({ tables }: TableLayoutProps) {
   return (
     <div 
       ref={containerRef}
-      className="relative w-full aspect-video bg-gray-50/50 rounded-[3rem] border-2 border-dashed border-gray-100 overflow-hidden group/floor"
+      className="relative w-full aspect-video bg-[#fdfdfd] rounded-[3.5rem] border-2 border-gray-100 shadow-inner overflow-hidden group/floor"
     >
-      {/* Floor Pattern Decoration */}
-      <div className="absolute inset-0 opacity-[0.03] pointer-events-none bg-[radial-gradient(#000_1px,transparent_1px)] [background-size:40px_40px]" />
+      {/* Dynamic Grid Background */}
+      <div className="absolute inset-0 opacity-[0.05] pointer-events-none bg-[linear-gradient(#000_1px,transparent_1px),linear-gradient(90deg,#000_1px,transparent_1px)] bg-size-[2.5%_2.5%]" />
+      <div className="absolute inset-0 opacity-[0.02] pointer-events-none bg-[linear-gradient(#000_2px,transparent_2px),linear-gradient(90deg,#000_2px,transparent_2px)] bg-size-[10%_10%]" />
       
       {tables.length === 0 ? (
         <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-300">
@@ -71,9 +77,15 @@ export default function TableLayout({ tables }: TableLayoutProps) {
               left: `${table.x ?? Math.random() * 80}%`, 
               top: `${table.y ?? Math.random() * 70}%` 
             }}
-            whileHover={{ scale: 1.05, zIndex: 10 }}
-            whileDrag={{ scale: 1.1, zIndex: 50, cursor: 'grabbing' }}
-            className={`absolute w-32 h-32 md:w-40 md:h-40 rounded-[2.5rem] shadow-2xl flex flex-col items-center justify-center cursor-grab transition-shadow ${
+            whileHover={{ scale: 1.05, zIndex: 10, transition: { duration: 0.2 } }}
+            whileDrag={{ 
+              scale: 1.1, 
+              zIndex: 50, 
+              cursor: 'grabbing',
+              opacity: 0.8,
+              boxShadow: "0 25px 50px -12px rgba(234, 88, 12, 0.4)" 
+            }}
+            className={`absolute w-32 h-32 md:w-40 md:h-40 rounded-[2.5rem] shadow-2xl flex flex-col items-center justify-center cursor-grab transition-colors duration-300 ${
               !table.isAvailable 
                 ? 'bg-red-600 text-white shadow-red-600/30' 
                 : table.reserved 

@@ -16,14 +16,20 @@ import {
   CreditCard, 
   FileText, 
   Settings2, 
-  LogOut,
+  ChevronRight,
   Menu,
   X,
-  ChevronRight
+  Users,
+  ShieldAlert,
+  LogOut
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
-export default function AdminSidebar() {
+interface AdminSidebarProps {
+  activeTab?: string;
+}
+
+export default function AdminSidebar({ activeTab }: AdminSidebarProps) {
   const { slug } = useParams<{ slug: string }>();
   const pathname = usePathname();
   const router = useRouter();
@@ -54,6 +60,8 @@ export default function AdminSidebar() {
       items: [
         { label: "TABLE MAPPING", icon: TableIcon, href: `/${slug}/admin/tables`, id: 'tables' },
         { label: "MENU CATALOG", icon: List, href: `/${slug}/admin?tab=menu`, id: 'menu' },
+        { label: "CUSTOMER DUES", icon: Users, href: `/${slug}/admin/customers`, id: 'customers' },
+        { label: "FRAUD PREVENTION", icon: ShieldAlert, href: `/${slug}/admin/fraud-logs`, id: 'fraud' },
       ]
     },
     {
@@ -73,6 +81,8 @@ export default function AdminSidebar() {
   ];
 
   const isActive = (item: any) => {
+    if (activeTab) return activeTab === item.id;
+    
     const currentTab = new URLSearchParams(window.location.search).get('tab');
     
     // If it's a direct route link (like /tables)
@@ -177,12 +187,9 @@ export default function AdminSidebar() {
   return (
     <>
       {/* Desktop Sidebar */}
-      <aside className="hidden lg:flex w-80 bg-gray-900/95 backdrop-blur-2xl flex-col h-screen fixed left-0 top-0 border-r border-white/5 shadow-[20px_0_50px_rgba(0,0,0,0.3)] z-20">
+      <aside className="hidden lg:flex w-80 bg-gray-900/95 backdrop-blur-2xl flex-col h-screen sticky left-0 top-0 border-r border-white/5 shadow-[20px_0_50px_rgba(0,0,0,0.3)] z-20 shrink-0">
         <SidebarContent />
       </aside>
-
-      {/* Spacer for fixed sidebar on desktop */}
-      <div className="hidden lg:block w-80 shrink-0" />
 
       {/* Mobile Menu Toggle */}
       <button 

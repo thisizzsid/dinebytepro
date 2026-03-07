@@ -5,8 +5,35 @@ export interface Customer {
   id?: string;
   name: string;
   mobile: string;
+  address?: string;
+  dueAmount?: number;
   verified: boolean;
   createdAt: Timestamp;
+}
+
+export interface DueTransaction {
+  id?: string;
+  customerId: string;
+  amount: number;
+  type: 'gave' | 'got'; // gave = customer owes (red), got = customer paid (green)
+  note?: string;
+  timestamp: Timestamp;
+}
+
+export interface LocationLog {
+  id?: string;
+  restaurantId: string;
+  customerId: string;
+  customerName: string;
+  userLat: number;
+  userLng: number;
+  restaurantLat: number;
+  restaurantLng: number;
+  distance: number;
+  isValid: boolean;
+  isSpoofed?: boolean;
+  timestamp: Timestamp;
+  orderId?: string;
 }
 
 export interface Order {
@@ -26,6 +53,8 @@ export interface Order {
   lastPingAt?: Timestamp;
   queuePosition?: number;
   estimatedWaitTime?: number; // in minutes
+  locationValidated?: boolean;
+  locationDistance?: number;
 }
 
 export interface Table {

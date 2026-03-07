@@ -5,7 +5,7 @@ import { useRestaurant } from "@/lib/restaurant-context";
 import { getOrders } from "../../../../lib/firebase/orders";
 import { Order } from "@/types/models";
 import jsPDF from "jspdf";
-import "jspdf-autotable";
+import autoTable from "jspdf-autotable";
 import AdminGuard from "@/components/AdminGuard";
 import { 
   BarChart3, 
@@ -45,13 +45,16 @@ export default function SalesReportPage() {
   const [startDate, setStartDate] = useState(format(new Date(), 'yyyy-MM-01'));
   const [endDate, setEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   useEffect(() => {
     if (restaurant) {
+      setIsSyncing(true);
       getOrders(restaurant.id).then((allOrders) => {
         setOrders(allOrders);
         applyFilter(allOrders, startDate, endDate);
-      });
+        setIsSyncing(false);
+      }).catch(() => setIsSyncing(false));
     }
   }, [restaurant]);
 
@@ -105,17 +108,17 @@ export default function SalesReportPage() {
       doc.text(`Period: ${startDate} to ${endDate}`, 14, 30);
       doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 35);
 
-      (doc as any).autoTable({
+      autoTable(doc, {
         startY: 45,
         head: [["Order ID", "Customer", "Items", "Type", "Status", "Total", "Date"]],
         body: filteredOrders.map((order) => [
-          order.id?.slice(-6).toUpperCase(),
-          order.customerName,
-          order.items.length,
-          order.type.toUpperCase(),
-          order.orderStatus.toUpperCase(),
-          `Rs. ${order.totalAmount.toFixed(2)}`,
-          format(order.createdAt.toDate(), 'MMM dd, hh:mm a'),
+          order.id?.slice(-6).toUpperCase() || "N/A",
+          order.customerName || "Walk-in",
+          (order.items?.length || 0).toString(),
+          (order.type || "N/A").toUpperCase(),
+          (order.orderStatus || "N/A").toUpperCase(),
+          `Rs. ${(order.totalAmount || 0).toFixed(2)}`,
+          order.createdAt ? format(order.createdAt.toDate(), 'MMM dd, hh:mm a') : "N/A",
         ]),
         headStyles: { fillColor: [79, 70, 229], textColor: [255, 255, 255] },
         alternateRowStyles: { fillColor: [245, 247, 250] },
