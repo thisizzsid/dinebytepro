@@ -101,15 +101,31 @@ export default function SalesReportPage() {
     setIsGenerating(true);
     try {
       const doc = new jsPDF();
-      doc.setFontSize(20);
-      doc.text(`${restaurant?.slug?.toUpperCase()} - Sales Report`, 14, 22);
+      
+      // Header Branding
+      doc.setFillColor(249, 115, 22); // Orange-600
+      doc.rect(0, 0, 210, 40, 'F');
+      
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(24);
+      doc.setFont("helvetica", "bold");
+      doc.text("DineByte", 14, 20);
+      
       doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.text("Command Center - Sales Analytics", 14, 28);
+      
+      doc.setTextColor(255, 255, 255);
+      doc.text(`Restaurant: ${restaurant?.name || restaurant?.slug?.toUpperCase()}`, 196, 20, { align: "right" });
+      doc.text(`Generated: ${new Date().toLocaleString()}`, 196, 28, { align: "right" });
+
       doc.setTextColor(100);
-      doc.text(`Period: ${startDate} to ${endDate}`, 14, 30);
-      doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 35);
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.text(`REPORT PERIOD: ${startDate} to ${endDate}`, 14, 50);
 
       autoTable(doc, {
-        startY: 45,
+        startY: 55,
         head: [["Order ID", "Customer", "Items", "Type", "Status", "Total", "Date"]],
         body: filteredOrders.map((order) => [
           order.id?.slice(-6).toUpperCase() || "N/A",
@@ -120,15 +136,25 @@ export default function SalesReportPage() {
           `Rs. ${(order.totalAmount || 0).toFixed(2)}`,
           order.createdAt ? format(order.createdAt.toDate(), 'MMM dd, hh:mm a') : "N/A",
         ]),
-        headStyles: { fillColor: [79, 70, 229], textColor: [255, 255, 255] },
-        alternateRowStyles: { fillColor: [245, 247, 250] },
+        headStyles: { fillColor: [31, 41, 55], textColor: [255, 255, 255], fontStyle: 'bold' },
+        alternateRowStyles: { fillColor: [249, 250, 251] },
+        styles: { fontSize: 9, cellPadding: 4 },
       });
 
-      const finalY = (doc as any).lastAutoTable.finalY || 50;
+      const finalY = (doc as any).lastAutoTable.finalY || 60;
+      
+      // Summary Box
+      doc.setFillColor(243, 244, 246);
+      doc.rect(14, finalY + 10, 182, 30, 'F');
+      
+      doc.setTextColor(31, 41, 55);
       doc.setFontSize(12);
-      doc.setTextColor(0);
-      doc.text(`Total Orders: ${filteredOrders.length}`, 14, finalY + 15);
-      doc.text(`Total Revenue: Rs. ${totalSales.toFixed(2)}`, 14, finalY + 22);
+      doc.text(`Total Orders: ${filteredOrders.length}`, 25, finalY + 22);
+      
+      doc.setFontSize(16);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(249, 115, 22);
+      doc.text(`Total Revenue: Rs. ${totalSales.toFixed(2)}`, 190, finalY + 24, { align: "right" });
 
       doc.save(`sales-report-${startDate}-to-${endDate}.pdf`);
     } catch (error) { 

@@ -105,11 +105,11 @@ export default function AdminSidebar({ activeTab }: AdminSidebarProps) {
     <div className="flex flex-col h-full">
       <div className="p-8">
         <Link href={`/${slug}/admin`} className="flex items-center gap-4 mb-2 group cursor-pointer">
-          <div className="w-14 h-14 bg-white rounded-2xl flex items-center justify-center p-1.5 overflow-hidden shadow-[0_20px_40px_rgba(234,88,12,0.15)] group-hover:shadow-[0_20px_40px_rgba(234,88,12,0.25)] rotate-3 group-hover:rotate-0 transition-all duration-700 border border-orange-500/10">
-            <img src="/moclogo.png" alt="DineByte Logo" className="w-full h-full object-contain" />
+          <div className="w-16 h-16 bg-white rounded-3xl flex items-center justify-center p-2 shadow-[0_20px_40px_rgba(234,88,12,0.15)] group-hover:shadow-[0_20px_40px_rgba(234,88,12,0.25)] rotate-3 group-hover:rotate-0 transition-all duration-700 border border-orange-500/10 overflow-hidden">
+            <img src="/moclogo.png" alt="DineByte Logo" className="w-full h-full object-contain scale-110" />
           </div>
           <div>
-            <h1 className="text-2xl font-black text-white leading-tight tracking-tighter group-hover:text-orange-500 transition-all duration-500">
+            <h1 className="text-2xl font-black text-white leading-tight tracking-tighter group-hover:text-orange-500 transition-all duration-500 italic">
               Dine<span className="text-orange-600">Byte</span>
             </h1>
             <div className="flex items-center gap-2">

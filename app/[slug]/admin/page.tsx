@@ -742,8 +742,8 @@ export default function AdminPage() {
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.8 }}
             >
-              <div className="w-24 h-24 bg-white rounded-[2.5rem] flex items-center justify-center mx-auto mb-10 shadow-2xl rotate-3 p-4">
-                <img src="/moclogo.png" alt="DineByte Logo" className="w-full h-full object-contain" />
+              <div className="w-24 h-24 bg-white rounded-4xl flex items-center justify-center mx-auto mb-10 shadow-2xl rotate-3 p-2 overflow-hidden border-2 border-orange-50">
+                <img src="/moclogo.png" alt="DineByte Logo" className="w-full h-full object-contain scale-110" />
               </div>
               <h2 className="text-6xl font-black text-white tracking-tighter mb-6 leading-none uppercase italic">
                 Dine<span className="text-orange-600">Byte</span>
@@ -795,8 +795,8 @@ export default function AdminPage() {
               animate={{ opacity: 1, y: 0 }}
               className="text-center lg:text-left mb-12"
             >
-              <div className="w-20 h-20 bg-orange-600 rounded-4xl flex items-center justify-center mb-8 rotate-6 shadow-2xl shadow-orange-600/20 mx-auto lg:mx-0 group hover:rotate-0 transition-all duration-500">
-                <Lock className="text-white w-10 h-10" />
+              <div className="w-20 h-20 bg-white rounded-4xl flex items-center justify-center mb-8 rotate-6 shadow-2xl shadow-orange-600/20 mx-auto lg:mx-0 group hover:rotate-0 transition-all duration-500 border-2 border-orange-50 overflow-hidden p-2">
+                <img src="/moclogo.png" alt="DineByte Logo" className="w-full h-full object-contain scale-125" />
               </div>
               <h1 className="text-5xl font-black text-gray-900 leading-none tracking-tighter mb-4 uppercase italic">Admin <span className="text-orange-600">Portal</span></h1>
               <p className="text-gray-400 font-bold uppercase tracking-[0.3em] text-[10px] flex items-center justify-center lg:justify-start gap-2">

@@ -190,10 +190,10 @@ export default function AuthPage() {
       <div className="w-full max-w-md bg-white rounded-[2.5rem] shadow-2xl p-8 lg:p-10 border border-orange-100 relative">
         
         <div className="text-center mb-10">
-          <div className="w-24 h-24 bg-orange-600 rounded-[2.5rem] flex items-center justify-center mx-auto mb-8 rotate-6 shadow-2xl shadow-orange-600/20 group-hover:rotate-12 transition-transform duration-500">
-            <img src="/moclogo.png" alt="DineByte" className="w-12 h-12 object-contain brightness-0 invert" />
+          <div className="w-24 h-24 bg-white rounded-4xl flex items-center justify-center mx-auto mb-8 rotate-6 shadow-2xl shadow-orange-600/10 group-hover:rotate-12 transition-transform duration-500 border-2 border-orange-50 overflow-hidden p-2">
+            <img src="/moclogo.png" alt="DineByte" className="w-full h-full object-contain scale-110" />
           </div>
-          <h1 className="text-4xl font-black text-gray-900 leading-tight mb-2 tracking-tight">DineByte</h1>
+          <h1 className="text-4xl font-black text-gray-900 leading-tight mb-2 tracking-tighter italic">Dine<span className="text-orange-600">Byte</span></h1>
           <p className="text-gray-400 font-bold mb-10 uppercase tracking-[0.3em] text-[10px]">Digital Dining Experience</p>
         </div>
 

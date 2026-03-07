@@ -344,8 +344,8 @@ export default function OnboardingPage() {
             animate={{ opacity: 1, y: 0 }}
             className="text-center lg:text-left mb-10"
           >
-            <div className="w-20 h-20 bg-orange-600 rounded-4xl flex items-center justify-center mb-8 rotate-6 shadow-2xl shadow-orange-600/20 group hover:rotate-0 transition-all duration-500 mx-auto lg:mx-0">
-              <img src="/moclogo.png" alt="DineByte Logo" className="w-12 h-12 object-contain" />
+            <div className="w-20 h-20 bg-white rounded-4xl flex items-center justify-center mb-8 rotate-6 shadow-2xl shadow-orange-600/20 group hover:rotate-0 transition-all duration-500 mx-auto lg:mx-0 overflow-hidden border-2 border-orange-50 p-2">
+              <img src="/moclogo.png" alt="DineByte Logo" className="w-full h-full object-contain scale-125" />
             </div>
             <h1 className="text-5xl font-black text-gray-900 mb-4 tracking-tighter uppercase italic">
               {isLogin ? (<>Welcome <span className="text-orange-600">Back</span></>) : (<>Activate <span className="text-orange-600">Restaurant</span></>)}

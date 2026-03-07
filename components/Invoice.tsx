@@ -17,11 +17,16 @@ export default function Invoice({ order, settings }: InvoiceProps) {
 
   return (
     <div className="p-8 bg-white" id="invoice">
-      <div className="text-center">
-        <h1 className="text-2xl font-bold">{settings.shopName}</h1>
-        <p>{settings.address}</p>
-        <p>{settings.contact}</p>
-        <p>GSTIN: {settings.gstin}</p>
+      <div className="flex flex-col items-center mb-6">
+        <div className="w-16 h-16 mb-4">
+          <img src="/moclogo.png" alt="DineByte Logo" className="w-full h-full object-contain" />
+        </div>
+        <h1 className="text-2xl font-black text-gray-900 uppercase tracking-tighter">{settings.shopName}</h1>
+        <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mt-1">{settings.address}</p>
+        <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">{settings.contact}</p>
+        <div className="mt-2 px-3 py-1 bg-gray-100 rounded-lg">
+          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">GSTIN: {settings.gstin}</p>
+        </div>
       </div>
       <hr className="my-4" />
       <div className="flex justify-between">

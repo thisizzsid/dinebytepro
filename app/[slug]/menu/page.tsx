@@ -19,7 +19,11 @@ function MenuContent() {
   const searchParams = useSearchParams();
   const { restaurant, isLoading: isRestroLoading } = useRestaurant();
   const tableNumber = searchParams.get("table");
-  const partySize = searchParams.get("party");
+  const initialPartySize = searchParams.get("party");
+  const [partySize, setPartySize] = useState(initialPartySize || "1");
+  const [isEditingPartySize, setIsEditingPartySize] = useState(false);
+  const [tempPartySize, setTempPartySize] = useState(partySize);
+
   const { customer, isLoading: isAuthLoading } = useAuth();
   const { items, addToCart, removeFromCart, clearCart, totalAmount } = useCart();
   const { location: userLocation, error: locationError, loading: isLocationLoading } = useLocation();
@@ -79,7 +83,7 @@ function MenuContent() {
             await updateDoc(tableDoc.ref, {
               isAvailable: false,
               occupiedAt: serverTimestamp(),
-              currentPartySize: parseInt(partySize || "1")
+              currentPartySize: parseInt(partySize)
             });
             console.log(`Table ${tableNumber} verified as occupied in menu`);
           }
@@ -90,7 +94,28 @@ function MenuContent() {
     };
 
     verifyTableStatus();
-  }, [restaurant, tableNumber, partySize]);
+  }, [restaurant, tableNumber]);
+
+  const handleUpdatePartySize = async () => {
+    if (!restaurant || !tableNumber) return;
+    try {
+      const tablesQ = query(
+        collection(db, "restaurants", restaurant.id, "tables"),
+        where("tableNumber", "==", tableNumber)
+      );
+      const tableSnapshot = await getDocs(tablesQ);
+      if (!tableSnapshot.empty) {
+        const tableDoc = tableSnapshot.docs[0];
+        await updateDoc(tableDoc.ref, {
+          currentPartySize: parseInt(tempPartySize)
+        });
+        setPartySize(tempPartySize);
+        setIsEditingPartySize(false);
+      }
+    } catch (e) {
+      console.error("Error updating party size:", e);
+    }
+  };
 
   useEffect(() => {
     if (!restaurant) return;
@@ -270,12 +295,12 @@ function MenuContent() {
       <header className="bg-white px-6 pt-12 pb-8 rounded-b-[3rem] shadow-sm sticky top-0 z-30 border-b border-orange-50">
         <div className="flex justify-between items-start mb-4">
           <div className="flex items-center gap-4">
-            <div className="w-16 h-16 relative">
-              <img src="/moclogo.png" alt="DineByte Logo" className="w-full h-full object-contain" />
+            <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center p-2 shadow-xl shadow-orange-600/10 border border-orange-50 overflow-hidden">
+              <img src="/moclogo.png" alt="DineByte Logo" className="w-full h-full object-contain scale-110" />
             </div>
             <div>
-              <h1 className="text-3xl font-black text-orange-900 leading-tight">DineByte</h1>
-              <p className="text-sm font-bold text-orange-600/60 uppercase tracking-widest">Premium Restaurant Service</p>
+              <h1 className="text-3xl font-black text-orange-900 leading-tight italic">Dine<span className="text-orange-600">Byte</span></h1>
+              <p className="text-[10px] font-black text-orange-600/60 uppercase tracking-[0.2em]">Premium Restaurant Service</p>
             </div>
           </div>
           <div className="text-right">
@@ -295,9 +320,50 @@ function MenuContent() {
             </span>
           )}
           {partySize && (
-            <span className="flex items-center gap-1 bg-emerald-100 text-emerald-700 px-4 py-2 rounded-2xl text-xs font-black uppercase tracking-wider">
-              <Utensils size={14} /> {partySize} Diners
-            </span>
+            <div className="flex items-center gap-2">
+              {isEditingPartySize ? (
+                <div className="flex items-center gap-1 bg-emerald-100 p-1 rounded-2xl">
+                  <input
+                     type="number"
+                     min="1"
+                     max="20"
+                     value={tempPartySize}
+                     onChange={(e) => setTempPartySize(e.target.value)}
+                     className="w-12 bg-white border-none rounded-xl py-1 px-2 text-xs font-black text-emerald-700 focus:ring-1 focus:ring-emerald-500"
+                     title="Number of Diners"
+                     placeholder="1"
+                   />
+                  <button 
+                    onClick={handleUpdatePartySize}
+                    className="p-1 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
+                    title="Confirm People"
+                  >
+                    <Check size={14} />
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setIsEditingPartySize(false);
+                      setTempPartySize(partySize);
+                    }}
+                    className="p-1 bg-gray-200 text-gray-500 rounded-lg hover:bg-gray-300 transition-colors"
+                    title="Cancel"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ) : (
+                <button 
+                  onClick={() => setIsEditingPartySize(true)}
+                  className="flex items-center gap-1 bg-emerald-100 text-emerald-700 px-4 py-2 rounded-2xl text-xs font-black uppercase tracking-wider hover:bg-emerald-200 transition-all group"
+                  title="Edit Number of People"
+                >
+                  <Utensils size={14} /> {partySize} Diners
+                  <span className="ml-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Plus size={10} strokeWidth={4} />
+                  </span>
+                </button>
+              )}
+            </div>
           )}
           <span className="text-[10px] font-bold text-gray-300 uppercase tracking-tighter">Verified Device • Secure Ordering</span>
           <a href="https://www.dinebyte.in" target="_blank" rel="noopener noreferrer" className="ml-auto px-3 py-2 bg-orange-100 text-orange-600 rounded-xl font-black text-xs hover:bg-orange-200 transition-all">

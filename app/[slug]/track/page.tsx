@@ -260,12 +260,12 @@ function TrackContent() {
         </button>
         <div className="flex justify-between items-end">
             <div className="flex items-center gap-4">
-              <div className="w-16 h-16 relative">
-                <img src="/moclogo.png" alt="DineByte Logo" className="w-full h-full object-contain" />
+              <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center p-2 shadow-xl shadow-orange-600/10 border border-orange-50 overflow-hidden">
+                <img src="/moclogo.png" alt="DineByte Logo" className="w-full h-full object-contain scale-110" />
               </div>
               <div>
-                <h1 className="text-3xl font-black text-orange-900 leading-tight">DineByte</h1>
-                <p className="text-sm font-bold text-orange-600/60 uppercase tracking-widest">Order Tracking</p>
+                <h1 className="text-3xl font-black text-orange-900 leading-tight italic">Dine<span className="text-orange-600">Byte</span></h1>
+                <p className="text-[10px] font-black text-orange-600/60 uppercase tracking-[0.2em]">Order Tracking</p>
               </div>
             </div>
             <div className="flex gap-2">
